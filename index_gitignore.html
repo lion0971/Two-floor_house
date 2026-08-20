@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Succuleaf 數位分身 - 模組化版</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+  <div id="loading-screen">
+    <!-- <video id="loading-video" autoplay loop muted playsinline>
+      <source src="./images/intro.mp4" type="video/mp4">
+      您的瀏覽器不支援影片標籤。
+    </video> -->
+
+    <div class="loader-container">
+      <div class="leaf-icon">🌿</div>
+      <div class="progress-wrapper">
+        <div id="loader-bar"></div>
+      </div>
+      <div id="loader-text">
+        System Initializing...
+        <br>
+        <span id="loader-percent">0%</span>
+      </div>
+    </div>
+    <div id="instructions">
+      <div id="desktop-instructions" style="display: none;">
+        <h3>🌿 空間體驗</h3>
+        <ul>
+          <li><strong>休息片刻</strong> 按ESC</li>
+          <li><strong>空間漫步</strong> 按英文 WASD / 方向鍵</li>
+          <li><strong>視角控制</strong> 擺動滑鼠環顧四周</li>
+          <li><strong>開關互動</strong> 單擊水龍頭 / 門</li>
+          <li><strong>透視/離開</strong> 雙擊畫面</li>
+        </ul>
+      </div>
+      <div id="mobile-instructions" style="display: none;">
+        <h3>🌿 隨身跨界</h3>
+        <ul>
+          <li><strong>觸控視角</strong> 單指滑動環顧四周</li>
+          <li><strong>空間行走</strong> 按住螢幕持續前進</li>
+          <li><strong>智能微控</strong> 單擊裝置開關水流</li>
+          <li><strong>透視選單</strong> 雙擊螢幕喚醒神之手</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="crosshair"></div>
+  <button id="exit-btn">
+    <span class="exit-icon">🚪</span>
+    <span>離開遊戲</span>
+  </button>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      // ── 裝置判斷：顯示對應的操作說明 ──
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      document.getElementById("desktop-instructions").style.display = isMobile ? "none" : "block";
+      document.getElementById("mobile-instructions").style.display = isMobile ? "block" : "none";
+
+      // ── 離開按鈕 ──
+      const exitBtn = document.getElementById("exit-btn");
+
+      if (exitBtn) {
+        exitBtn.addEventListener("click", function () {
+          exitApp();
+        });
+      }
+    });
+
+    function exitApp() {
+      // 1. 解除滑鼠鎖定
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+
+      // 2. 停止動畫迴圈，節省 CPU/GPU
+      if (typeof isAnimating !== "undefined") {
+        isAnimating = false;
+      }
+
+      // 3. 主動補存濾心用量
+      if (typeof FILTER_DEVICES !== "undefined" && typeof filterState !== "undefined") {
+        FILTER_DEVICES.forEach(device => {
+          if (filterState[device]?.isActive) saveFilterUsage(device);
+        });
+      }
+
+      // 4. 釋放 renderer 資源
+      if (typeof renderer !== "undefined") {
+        renderer.dispose();
+      }
+
+      // 5. 直接顯示結尾畫面，不嘗試關閉分頁
+      showCloseFallback();
+    }
+
+    function showCloseFallback() {
+      let fallback = document.getElementById("close-fallback");
+      if (fallback) return; // 避免重複建立
+
+      fallback = document.createElement("div");
+      fallback.id = "close-fallback";
+      fallback.innerHTML = `
+    <div class="close-fallback-box">
+      <div class="close-fallback-icon">🌿</div>
+      <div class="close-fallback-title">體驗結束，期待重逢</div>
+      <div class="close-fallback-tip">To be continued</div>
+    </div>
+  `;
+      document.body.appendChild(fallback);
+    }
+  </script>
+
+  <script type="importmap">
+  {
+      "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/examples/jsm/loaders/DRACOLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js",
+          "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
+          "three/examples/jsm/loaders/RGBELoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/RGBELoader.js",
+          "three/examples/jsm/controls/PointerLockControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/PointerLockControls.js",
+          "three/examples/jsm/renderers/CSS2DRenderer.js": "https://unpkg.com/three@0.160.0/examples/jsm/renderers/CSS2DRenderer.js",
+          "three/examples/jsm/postprocessing/EffectComposer.js": "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js",
+          "three/examples/jsm/postprocessing/RenderPass.js": "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js",
+          "three/examples/jsm/postprocessing/UnrealBloomPass.js": "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js",
+          "three/examples/jsm/lights/RectAreaLightUniformsLib.js": "https://unpkg.com/three@0.160.0/examples/jsm/lights/RectAreaLightUniformsLib.js",
+          "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
+      }
+  }
+</script>
+  <script src="config.js"></script>
+  <script type="module" src="./main.js?v=20260704"></script>
+</body>
+
+</html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Succuleaf 數位分身 - 模組化版</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+  <div id="loading-screen">
+    <!-- <video id="loading-video" autoplay loop muted playsinline>
+      <source src="./images/intro.mp4" type="video/mp4">
+      您的瀏覽器不支援影片標籤。
+    </video> -->
+
+    <div class="loader-container">
+      <div class="leaf-icon">🌿</div>
+      <div class="progress-wrapper">
+        <div id="loader-bar"></div>
+      </div>
+      <div id="loader-text">正在組裝...</div>
+    </div>
+    <div id="instructions">
+      <div id="desktop-instructions" style="display: none;">
+        <h3>💻 電腦極致體驗</h3>
+        <ul>
+          <li><strong>入厝儀式</strong> ｜ 載入完成後，點擊畫面優雅開門。</li>
+          <li><strong>空間漫步</strong> ｜ 鍵盤英文 W A S D／方向鍵悠遊，擺動滑鼠環顧四周。</li>
+          <li><strong>科技透視</strong> ｜ 滑鼠單點水龍頭或門開關。</li>
+          <li><strong>科技透視</strong> ｜ 滑鼠雙點畫面，喚醒上帝之手。</li>
+        </ul>
+      </div>
+      <div id="mobile-instructions" style="display: none;">
+        <h3>📱 手機隨身跨界</h3>
+        <ul>
+          <li><strong>觸控視角</strong> ｜ 單指滑動環顧四周。</li>
+          <li><strong>空間行走</strong> ｜ 按住螢幕不放持續前進。</li>
+          <li><strong>智能微控</strong> ｜ 單指點擊裝置，隨心開關水流。</li>
+          <li><strong>透視選單</strong> ｜ 單指雙擊螢幕，喚醒上帝之手。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="crosshair"></div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      document.getElementById("desktop-instructions").style.display = isMobile ? "none" : "block";
+      document.getElementById("mobile-instructions").style.display = isMobile ? "block" : "none";
+    });
+  </script>
+
+
+  <script type="importmap">
+  {
+      "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/examples/jsm/loaders/DRACOLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js",
+          "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
+          "three/examples/jsm/loaders/RGBELoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/RGBELoader.js",
+          "three/examples/jsm/controls/PointerLockControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/PointerLockControls.js",
+          "three/examples/jsm/renderers/CSS2DRenderer.js": "https://unpkg.com/three@0.160.0/examples/jsm/renderers/CSS2DRenderer.js",
+          "three/examples/jsm/postprocessing/EffectComposer.js": "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js",
+          "three/examples/jsm/postprocessing/RenderPass.js": "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js",
+          "three/examples/jsm/postprocessing/UnrealBloomPass.js": "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js",
+          "three/examples/jsm/lights/RectAreaLightUniformsLib.js": "https://unpkg.com/three@0.160.0/examples/jsm/lights/RectAreaLightUniformsLib.js",
+          "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
+      }
+  }
+</script>
+
+  <script type="module" src="./main.js?v=20260704"></script>
+</body>
+
+</html>
