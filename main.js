@@ -121,13 +121,7 @@ let sceneRenderEnabled = false; // 黑幕蓋著時先不渲染 3D 場景，避�
 
 //碰撞宣告head
 let collidableObjects = [];
-window.collidableObjects = collidableObjects; // ← 新增這行，方便 console 除錯（陣列參照不變，之後 push 進去的內容也看得到）
 
-// ⚡ 除錯用：碰撞耗時量測開關（預設關閉，不影響正式效能）。
-// 想測試時在瀏覽器 console 打 `DEBUG_COLLISION_TIMING = true` 開始量測，
-// 打 `DEBUG_COLLISION_TIMING = false` 關閉，不用改程式碼、不用重新整理頁面。
-window.DEBUG_COLLISION_TIMING = false;
-const _collisionTimingStats = { count: 0, total: 0, max: 0, lastReport: performance.now() };
 let isNoclipMode = false;
 let isStuckInWall = false;
 let isMenuAction = false;
@@ -3674,45 +3668,7 @@ function animate() {
 
     // ⚡ 只在有移動時才執行碰撞檢測
     if (!isOnStairRail && moveVelocity.lengthSq() > 0.000001) {
-      // ── 除錯用：量測 handleMovementAndCollision 實際耗時 ──
-      // 用 window.DEBUG_COLLISION_TIMING 控制開關，不用改程式碼、
-      // 直接在瀏覽器 console 打 `DEBUG_COLLISION_TIMING = true` 就能開始量測，
-      // 打 `DEBUG_COLLISION_TIMING = false` 就會停止。
-      if (window.DEBUG_COLLISION_TIMING) {
-        const _t0 = performance.now();
-        handleMovementAndCollision(moveVelocity);
-        const _cost = performance.now() - _t0;
-
-        _collisionTimingStats.count++;
-        _collisionTimingStats.total += _cost;
-        if (_cost > _collisionTimingStats.max) _collisionTimingStats.max = _cost;
-        if (_cost > 1) {
-          console.warn(
-            '[碰撞耗時]', _cost.toFixed(2), 'ms',
-            '| collidableObjects 數量:', collidableObjects.length
-          );
-        }
-
-        // 每 3 秒印一次摘要（平均/最大耗時、取樣幀數），方便一次看整段路程的狀況，
-        // 不用逐幀看 warning 洗版
-        const now = performance.now();
-        if (now - _collisionTimingStats.lastReport > 3000) {
-          const avg = _collisionTimingStats.count
-            ? (_collisionTimingStats.total / _collisionTimingStats.count)
-            : 0;
-          console.log(
-            `[碰撞耗時摘要] 過去 ${((now - _collisionTimingStats.lastReport) / 1000).toFixed(1)}s：` +
-            `平均 ${avg.toFixed(3)}ms／最大 ${_collisionTimingStats.max.toFixed(3)}ms／` +
-            `取樣 ${_collisionTimingStats.count} 幀／collidableObjects 數量 ${collidableObjects.length}`
-          );
-          _collisionTimingStats.count = 0;
-          _collisionTimingStats.total = 0;
-          _collisionTimingStats.max = 0;
-          _collisionTimingStats.lastReport = now;
-        }
-      } else {
-        handleMovementAndCollision(moveVelocity);
-      }
+      handleMovementAndCollision(moveVelocity);
     }
     updateStaircase(delta);
     // ...
@@ -4011,8 +3967,8 @@ function createEndScreenAmbience(container) {
     // 只要改 middleTailConfig 或 sideTailConfig 裡的數字即可。
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
-    const middleTailConfig = { tailLen: w * 1.1, tailWidth: h * 0.9, tailOverlap: w * 0.23 };
-    const sideTailConfig   = { tailLen: w * 0.8, tailWidth: h * 0.7, tailOverlap: w * 0.13 };
+    const middleTailConfig = { tailLen: w * 1.08, tailWidth: h * 0.9, tailOverlap: w * 0.15 };
+    const sideTailConfig   = { tailLen: w * 0.83, tailWidth: h * 0.7, tailOverlap: w * 0.05 };
 
     const tailConfigs = [
       { fork: 0,          ...middleTailConfig }, // 中間直的一片
