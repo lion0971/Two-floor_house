@@ -22,12 +22,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/fireba
 import { getDatabase, ref, onValue, get, set, remove, update, increment } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDjEAOsrsDNzukTyacscnc6Bt71_2HVkXg",
-  authDomain: "water-alert-system-79dfa.firebaseapp.com",
-  databaseURL: "https://water-alert-system-79dfa-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "water-alert-system-79dfa",
-};
 const fbApp = initializeApp(firebaseConfig);
 
 const db = getDatabase(fbApp);
@@ -122,12 +116,6 @@ let sceneRenderEnabled = false; // 黑幕蓋著時先不渲染 3D 場景，避�
 //碰撞宣告head
 let collidableObjects = [];
 window.collidableObjects = collidableObjects; // ← 新增這行，方便 console 除錯（陣列參照不變，之後 push 進去的內容也看得到）
-
-// ⚡ 除錯用：碰撞耗時量測開關（預設關閉，不影響正式效能）。
-// 想測試時在瀏覽器 console 打 `DEBUG_COLLISION_TIMING = true` 開始量測，
-// 打 `DEBUG_COLLISION_TIMING = false` 關閉，不用改程式碼、不用重新整理頁面。
-window.DEBUG_COLLISION_TIMING = false;
-const _collisionTimingStats = { count: 0, total: 0, max: 0, lastReport: performance.now() };
 let isNoclipMode = false;
 let isStuckInWall = false;
 let isMenuAction = false;
@@ -3174,26 +3162,6 @@ manager.onLoad = () => {
   applyDayNight(parseFloat(daySlider.value));
   currentBulbStrength = targetBulbStrength;
   applyBulbStrength(currentBulbStrength);
-
-  // ⚡ 修正「走到客廳突然爆衝一下」：composer.render() 只會編譯目前相機視野內
-  // 看得到的材質 shader，起始位置(走道)看不到的客廳磚牆/發光燈框(RectAreaLight)/
-  // 沙發等材質，會拖到玩家走過去、第一次真正進入視野時才臨時編譯，
-  // 這個編譯動作是同步阻塞主執行緒的，一次可能卡住幾百毫秒。
-  // 而移動迴圈的 delta 有 Math.min(time - prevTime, 0.1) 這個上限（見動畫迴圈），
-  // 代表卡頓恢復的那一幀，會直接套用長達 0.1 秒份量的移動速度，
-  // 感覺上就像「頓一下、然後瞬間往前衝一段」。
-  // 這裡趁黑幕還沒淡出、玩家還沒開始移動前，主動把整個場景所有材質
-  // 一次預先編譯完，之後不管走到哪個房間，都不會再臨時卡頓。
-  if (renderer.compileAsync) {
-    renderer.compileAsync(scene, camera).catch(err => {
-      console.warn('[shader 預編譯] compileAsync 失敗，退回同步 compile()', err);
-      renderer.compile(scene, camera);
-    });
-  } else {
-    // 舊版 three.js 沒有 compileAsync，退回同步版本（仍然比「臨時卡頓」好，
-    // 因為這裡執行時黑幕還沒淡出，玩家根本還看不到畫面）
-    renderer.compile(scene, camera);
-  }
 };
 
 // ── 滑桿容器（預設隱藏）──
@@ -3630,6 +3598,9 @@ function animate() {
   }
 
   // ⚡ 效能優化：UI 更新節流至每 0.15 秒一次
+  const FILTER_CARD_VISIBILITY_INTERVAL = 0.15;
+  let filterCardVisibilityElapsed = 0;
+
   filterCardVisibilityElapsed += delta;
   if (filterCardVisibilityElapsed >= FILTER_CARD_VISIBILITY_INTERVAL) {
     filterCardVisibilityElapsed = 0;
@@ -3638,14 +3609,8 @@ function animate() {
 
   // 移動
   if (controls.isLocked) {
-    // ⚡ 保險機制：就算某一幀因為任何原因（貼圖上傳、GC、分頁切回前景等）
-    // 卡了一大段時間，移動用的 delta 也只封頂在 0.05 秒（約 3 倍正常 frame），
-    // 不會再用到最上面 Math.min(time - prevTime, 0.1) 那個較寬鬆的 0.1 秒上限。
-    // 其他系統（濾心計時、門動畫等）不受影響，仍使用原本的 delta，避免時間累計失準。
-    const moveDelta = Math.min(delta, 0.05);
-
-    velocity.x -= velocity.x * 10.0 * moveDelta;
-    velocity.z -= velocity.z * 10.0 * moveDelta;
+    velocity.x -= velocity.x * 10.0 * delta;
+    velocity.z -= velocity.z * 10.0 * delta;
 
     direction.z = Number(moveForward) - Number(moveBackward);
     direction.x = Number(moveLeft) - Number(moveRight);
@@ -3656,8 +3621,8 @@ function animate() {
     if (hasInput) {
       direction.normalize();
 
-      if (moveForward || moveBackward) velocity.z -= direction.z * 40.0 * moveDelta;
-      if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * moveDelta;
+      if (moveForward || moveBackward) velocity.z -= direction.z * 40.0 * delta;
+      if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * delta;
 
       if (isHoldWalking && !isTouchMoving) {
         velocity.z -= 3.0;
@@ -3665,54 +3630,16 @@ function animate() {
     }
 
     const moveVelocity = new THREE.Vector3(
-      velocity.x * moveDelta,
+      velocity.x * delta,
       0,
-      velocity.z * moveDelta
+      velocity.z * delta
     );
     moveVelocity.applyQuaternion(camera.quaternion);
     moveVelocity.y = 0;
 
     // ⚡ 只在有移動時才執行碰撞檢測
     if (!isOnStairRail && moveVelocity.lengthSq() > 0.000001) {
-      // ── 除錯用：量測 handleMovementAndCollision 實際耗時 ──
-      // 用 window.DEBUG_COLLISION_TIMING 控制開關，不用改程式碼、
-      // 直接在瀏覽器 console 打 `DEBUG_COLLISION_TIMING = true` 就能開始量測，
-      // 打 `DEBUG_COLLISION_TIMING = false` 就會停止。
-      if (window.DEBUG_COLLISION_TIMING) {
-        const _t0 = performance.now();
-        handleMovementAndCollision(moveVelocity);
-        const _cost = performance.now() - _t0;
-
-        _collisionTimingStats.count++;
-        _collisionTimingStats.total += _cost;
-        if (_cost > _collisionTimingStats.max) _collisionTimingStats.max = _cost;
-        if (_cost > 1) {
-          console.warn(
-            '[碰撞耗時]', _cost.toFixed(2), 'ms',
-            '| collidableObjects 數量:', collidableObjects.length
-          );
-        }
-
-        // 每 3 秒印一次摘要（平均/最大耗時、取樣幀數），方便一次看整段路程的狀況，
-        // 不用逐幀看 warning 洗版
-        const now = performance.now();
-        if (now - _collisionTimingStats.lastReport > 3000) {
-          const avg = _collisionTimingStats.count
-            ? (_collisionTimingStats.total / _collisionTimingStats.count)
-            : 0;
-          console.log(
-            `[碰撞耗時摘要] 過去 ${((now - _collisionTimingStats.lastReport) / 1000).toFixed(1)}s：` +
-            `平均 ${avg.toFixed(3)}ms／最大 ${_collisionTimingStats.max.toFixed(3)}ms／` +
-            `取樣 ${_collisionTimingStats.count} 幀／collidableObjects 數量 ${collidableObjects.length}`
-          );
-          _collisionTimingStats.count = 0;
-          _collisionTimingStats.total = 0;
-          _collisionTimingStats.max = 0;
-          _collisionTimingStats.lastReport = now;
-        }
-      } else {
-        handleMovementAndCollision(moveVelocity);
-      }
+      handleMovementAndCollision(moveVelocity);
     }
     updateStaircase(delta);
     // ...
@@ -3942,222 +3869,20 @@ if (isMobile) {
   }, { passive: true });
 }
 
-// ─────────────────────────────────────────
-// 結束畫面環境動畫：葉子持續搖晃 ＋ 橘色魚群隨機游動
-// ⚡ 這裡只操作幾個 DOM 元素的 CSS transform，而且只有在 exitApp() 已經把
-// isAnimating 設成 false（3D 渲染/碰撞/移動主迴圈完全停掉）之後才會啟動，
-// 所以效能成本可以忽略不計，不用像走道/客廳那段那樣顧慮 shader 編譯或 delta 爆衝。
-// ─────────────────────────────────────────
-
-let endScreenRafId = null;
-let endScreenAmbience = null; // { layer, leaves, fish, startTime }
-
-function createEndScreenAmbience(container) {
-  const layer = document.createElement('div');
-  layer.id = 'end-screen-ambience'; // 樣式定義在 style.css 的 #end-screen-ambience（position/inset/z-index 等固定屬性都在那裡）
-  // ⚡ 刻意掛在 document.body 底下（而不是掛進 container 裡面），
-  // 避免 container 或它的祖先若被外部 CSS 設定 transform / filter / overflow:hidden，
-  // 導致這個 position:fixed 圖層被裁切或定位跑掉（fixed 定位在有 transform 的祖先底下
-  // 會改成相對該祖先定位，等於失去「蓋滿整個視窗」的效果）。
-  document.body.appendChild(layer);
-
-  // ── 葉子：重用原本 tap 提示的搖晃邏輯，改成多片、隨機位置/週期，看起來才自然 ──
-  const LEAF_COUNT = 6;
-  const leaves = [];
-  for (let i = 0; i < LEAF_COUNT; i++) {
-    const el = document.createElement('div');
-    el.className = 'end-leaf'; // 固定樣式（position/will-change）在 style.css
-    el.textContent = '🌿';
-    // 以下都是每片葉子隨機不同的數值，維持用 inline style 設定
-    Object.assign(el.style, {
-      left: `${5 + Math.random() * 90}%`,
-      top: `${5 + Math.random() * 85}%`,
-      fontSize: `${20 + Math.random() * 20}px`,
-      opacity: `${0.5 + Math.random() * 0.4}`,
-    });
-    layer.appendChild(el);
-    leaves.push({
-      el,
-      duration: 2200 + Math.random() * 1600, // 2.2~3.8s 一輪，每片節奏不同才不會整齊劃一
-      phaseOffset: Math.random() * Math.PI * 2,
-      rotateAmp: 3 + Math.random() * 4,        // 度
-      translateAmp: 1.5 + Math.random() * 2.5, // px
-      baseScale: 0.8 + Math.random() * 0.5,
-    });
-  }
-
-  // ── 魚：橘色橢圓 + 會擺動的尾鰭，隨機游動（steering wander：每幀小幅隨機轉向，碰邊界自然反彈）──
-  const FISH_COUNT = 5;
-  const fish = [];
-  for (let i = 0; i < FISH_COUNT; i++) {
-    const w = 22 + Math.random() * 18;
-    const h = w * 0.45;
-
-    // 外層：只負責「位置＋朝向」，身體跟尾巴都是它的子元素，
-    // 這樣尾巴的擺動角度會疊加在魚朝向之上，不用自己重算方向。
-    const el = document.createElement('div');
-    el.className = 'end-fish'; // 固定樣式（position/left/top/will-change）在 style.css
-    Object.assign(el.style, {
-      width: `${w}px`,
-      height: `${h}px`,
-    });
-
-    // 魚身體（橢圓）── 固定樣式（inset/border-radius/background/box-shadow）都在 style.css 的 .end-fish-body
-    const body = document.createElement('div');
-    body.className = 'end-fish-body';
-
-    // ⚡ 只需要調整兩組數據：中間一組、左右共用一組（左右兩片除了分岔角度相反，
-    // 長度/寬度/塞進身體多少都完全一樣）。想讓中間跟左右看起來不一樣，
-    // 只要改 middleTailConfig 或 sideTailConfig 裡的數字即可。
-    const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
-
-    const middleTailConfig = { tailLen: w * 1.1, tailWidth: h * 0.9, tailOverlap: w * 0.23 };
-    const sideTailConfig   = { tailLen: w * 0.8, tailWidth: h * 0.7, tailOverlap: w * 0.13 };
-
-    const tailConfigs = [
-      { fork: 0,          ...middleTailConfig }, // 中間直的一片
-      { fork: forkAngle,  ...sideTailConfig },    // 右側
-      { fork: -forkAngle, ...sideTailConfig },    // 左側（跟右側共用同一組長寬/overlap數據）
-    ];
-
-    const tailEls = [];
-    tailConfigs.forEach(({ fork, tailLen, tailWidth, tailOverlap }) => {
-      const fin = document.createElement('div');
-      fin.className = 'end-fish-tail'; // 固定樣式（transform-origin/clip-path/background/opacity）在 style.css
-      // 以下是每片尾鰭依 tailLen/tailOverlap 算出來的隨機數值，維持用 inline style 設定
-      Object.assign(fin.style, {
-        left: `${-(tailLen - tailOverlap)}px`,
-        width: `${tailLen}px`,
-        height: `${tailWidth}px`,
-      });
-      el.appendChild(fin);
-      tailEls.push({ el: fin, fork }); // 記住這片尾鰭的固定分岔角度，更新時要疊加擺動角度
-    });
-
-    el.appendChild(body); // body 最後掛，蓋住尾鰭塞進身體範圍內的那段接縫
-
-    layer.appendChild(el);
-    fish.push({
-      el,
-      tailEls, // [{el, fork}, {el, fork}]，取代原本單一的 tailEl
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      angle: Math.random() * Math.PI * 2,
-      speed: 18 + Math.random() * 22,       // px/秒
-      turnRate: 0.6 + Math.random() * 0.6,  // 每幀轉向弧度
-      tailPhase: Math.random() * Math.PI * 2, // 每條魚擺動起始相位錯開，不會同步甩動
-      tailAmp: 22 + Math.random() * 10,       // 擺動振幅（度）
-    });
-  }
-
-  return { layer, leaves, fish, startTime: performance.now() };
-}
-
-function stepEndScreenAmbience(state, now, prevNow) {
-  const dt = Math.min((now - prevNow) / 1000, 0.1);
-  const elapsed = now - state.startTime;
-
-  // 葉子搖晃
-  for (const leaf of state.leaves) {
-    const phase = ((elapsed % leaf.duration) / leaf.duration) * Math.PI * 2 + leaf.phaseOffset;
-    const rotateDeg = Math.sin(phase) * leaf.rotateAmp;
-    const translateXpx = Math.sin(phase) * leaf.translateAmp;
-    const translateYpx = Math.cos(phase * 0.7) * (leaf.translateAmp * 0.6);
-    leaf.el.style.transform =
-      `translate(${translateXpx.toFixed(2)}px, ${translateYpx.toFixed(2)}px) ` +
-      `scale(${leaf.baseScale.toFixed(2)}) rotate(${rotateDeg.toFixed(2)}deg)`;
-  }
-
-  // 魚隨機游動
-  const w = state.layer.clientWidth || window.innerWidth;
-  const h = state.layer.clientHeight || window.innerHeight;
-  const margin = 24;
-
-  for (const f of state.fish) {
-    // 隨機小幅轉向，路徑才會自然、不規則（而不是繞固定圓形或直線）
-    f.angle += (Math.random() - 0.5) * f.turnRate * dt;
-
-    f.x += Math.cos(f.angle) * f.speed * dt;
-    f.y += Math.sin(f.angle) * f.speed * dt;
-
-    // 碰到邊界就把角度「反彈」回畫面內，而不是卡在邊緣抖動
-    if (f.x < margin) { f.x = margin; f.angle = Math.PI - f.angle; }
-    if (f.x > w - margin) { f.x = w - margin; f.angle = Math.PI - f.angle; }
-    if (f.y < margin) { f.y = margin; f.angle = -f.angle; }
-    if (f.y > h - margin) { f.y = h - margin; f.angle = -f.angle; }
-
-    const deg = (f.angle * 180) / Math.PI;
-    f.el.style.transform = `translate(${f.x.toFixed(1)}px, ${f.y.toFixed(1)}px) rotate(${deg.toFixed(1)}deg)`;
-
-    // 尾鰭擺動：正弦波，速度越快擺得越快（模擬真實游動節奏）。
-    // 兩片尾鰭共用同一個 wagDeg（整條尾巴一起甩），但各自疊加自己固定的分岔角度(fork)，
-    // 這樣甩動時會維持 V 字分岔的形狀，而不是像剪刀一樣開合。
-    const wagFreqHz = 1.2 + f.speed * 0.06; // 速度快→擺動頻率高
-    const wagDeg = Math.sin(elapsed / 1000 * wagFreqHz * Math.PI * 2 + f.tailPhase) * f.tailAmp;
-    f.tailEls.forEach(({ el: finEl, fork }) => {
-      finEl.style.transform = `translateY(-50%) rotate(${(fork + wagDeg).toFixed(1)}deg)`;
-    });
-  }
-}
-
-function startEndScreenAmbience(container) {
-  stopEndScreenAmbience(); // 保險：避免重複呼叫時疊加出多組 layer
-  endScreenAmbience = createEndScreenAmbience(container);
-
-  let prevNow = performance.now();
-  function frame(now) {
-    stepEndScreenAmbience(endScreenAmbience, now, prevNow);
-    prevNow = now;
-    endScreenRafId = requestAnimationFrame(frame);
-  }
-  endScreenRafId = requestAnimationFrame(frame);
-}
-
-function stopEndScreenAmbience() {
-  if (endScreenRafId !== null) {
-    cancelAnimationFrame(endScreenRafId);
-    endScreenRafId = null;
-  }
-  if (endScreenAmbience) {
-    endScreenAmbience.layer.remove();
-    endScreenAmbience = null;
-  }
-}
-
 function showCloseFallback() {
   let fallback = document.getElementById("close-fallback");
-
-  if (fallback) {
-    // ⚡ 元素已經存在（不管是先前呼叫過，還是 HTML 裡本來就有靜態版本），
-    // 不重新建立文字內容（避免蓋掉你原本設計好的版面），
-    // 但一定要確保葉子/魚環境動畫有掛上去，不能整個函式提早結束。
-    if (!document.getElementById('end-screen-ambience')) {
-      startEndScreenAmbience(fallback);
-    }
-    return;
-  }
+  if (fallback) return; // 已顯示過，避免重複建立
 
   fallback = document.createElement("div");
   fallback.id = "close-fallback";
   fallback.innerHTML = `
     <div class="close-fallback-box">
       <div class="close-fallback-icon">🌿</div>
-      <div class="close-fallback-title">體驗結束，期待重逢</div>
-      <div class="close-fallback-tip">To be continued</div>
+      <div class="close-fallback-title">體驗已結束，期待再次相見</div>
+      <div class="close-fallback-tip">The End</div>
     </div>
   `;
   document.body.appendChild(fallback);
-
-  // ⚡ 保險：確保文字卡片會蓋在葉子/魚群 layer 之上，不論外部 CSS 有沒有設定過 z-index
-  const box = fallback.querySelector('.close-fallback-box');
-  if (box) {
-    if (!box.style.position) box.style.position = 'relative';
-    if (!box.style.zIndex) box.style.zIndex = '1';
-  }
-
-  // 這裡才啟動環境動畫：此時 exitApp() 早已把 isAnimating 設成 false，
-  // 3D 主迴圈已停，效能完全不用顧慮。
-  startEndScreenAmbience(fallback);
 }
 
 function exitApp() {
@@ -4186,19 +3911,3 @@ function exitApp() {
   // 5. 直接顯示結尾畫面，不嘗試關閉分頁
   showCloseFallback();
 }
-
-// ─────────────────────────────────────────
-// ⚡ 重要：把 exitApp 掛到全域 window
-// index.html 裡「離開遊戲」按鈕的 click 事件，是在一般 <script>（非 module）裡
-// 用 addEventListener 呼叫全域的 exitApp()。但這裡是 <script type="module">，
-// 模組內的 function/變數（包含這裡的 exitApp、isAnimating、renderer、
-// 剛剛加的 startEndScreenAmbience 等）預設不會流到 window，
-// 外面的一般 script 完全看不到、也叫不到。
-// 如果 index.html 裡还留著它自己那份重複的 exitApp()/showCloseFallback()，
-// 按鈕點下去執行的會是那份「看不到 isAnimating/renderer」的舊版本，
-// 導致 3D 渲染迴圈實際上沒有真的停掉、也不會有葉子/魚動畫。
-// 所以這裡手動把這個模組內的 exitApp 掛到 window，
-// 並請務必把 index.html 裡重複定義的 exitApp()/showCloseFallback() 整段刪掉，
-// 讓按鈕真正呼叫到這裡（唯一一份、行為完整）的版本。
-window.exitApp = exitApp;
-window.showCloseFallback = showCloseFallback;

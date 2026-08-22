@@ -396,3 +396,47 @@ body {
     box-shadow: 0 0 20px #00ffcc;
   }
 }
+
+/* ==========================================
+   🌿🐟 結束畫面環境動畫：葉子搖晃 ＋ 金魚游動
+   由 main.js 的 createEndScreenAmbience() 動態建立元素，
+   這裡只放「所有實例共用、不會變」的樣式；
+   每個元素的隨機數值（位置/寬高/尾巴長度等）還是由 JS 用 inline style 設定，
+   因為那些是每次隨機產生、每個元素都不一樣的，寫死在 CSS 裡沒有意義。
+   ========================================== */
+#end-screen-ambience {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none; /* 不擋住結束畫面上的文字或按鈕點擊 */
+  z-index: 2147483647;  /* 用最大值，避免被外部既有的 #close-fallback 樣式蓋住 */
+}
+
+.end-leaf {
+  position: absolute;
+  will-change: transform;
+}
+
+.end-fish {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.end-fish-body {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 35% 35%, #ffb066, #ff8a3d 60%, #e5691a);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.end-fish-tail {
+  position: absolute;
+  top: 50%;
+  transform-origin: 100% 50%;
+  clip-path: polygon(100% 15%, 100% 85%, 0% 50%); /* 寬底在身體端，尖端朝外 */
+  background: linear-gradient(90deg, #e5691a, #ff8a3d);
+  opacity: 0.9;
+}

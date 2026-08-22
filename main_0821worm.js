@@ -22,12 +22,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/fireba
 import { getDatabase, ref, onValue, get, set, remove, update, increment } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDjEAOsrsDNzukTyacscnc6Bt71_2HVkXg",
-  authDomain: "water-alert-system-79dfa.firebaseapp.com",
-  databaseURL: "https://water-alert-system-79dfa-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "water-alert-system-79dfa",
-};
 const fbApp = initializeApp(firebaseConfig);
 
 const db = getDatabase(fbApp);
@@ -3954,7 +3948,14 @@ let endScreenAmbience = null; // { layer, leaves, fish, startTime }
 
 function createEndScreenAmbience(container) {
   const layer = document.createElement('div');
-  layer.id = 'end-screen-ambience'; // 樣式定義在 style.css 的 #end-screen-ambience（position/inset/z-index 等固定屬性都在那裡）
+  layer.id = 'end-screen-ambience';
+  Object.assign(layer.style, {
+    position: 'fixed', // 用 fixed 而不是 absolute，避免依賴 container 是否有設 position
+    inset: '0',
+    overflow: 'hidden',
+    pointerEvents: 'none', // 不擋住結束畫面上的文字或按鈕點擊
+    zIndex: '2147483647', // ⚡ 用最大值，避免被外部既有的 #close-fallback 樣式蓋住
+  });
   // ⚡ 刻意掛在 document.body 底下（而不是掛進 container 裡面），
   // 避免 container 或它的祖先若被外部 CSS 設定 transform / filter / overflow:hidden，
   // 導致這個 position:fixed 圖層被裁切或定位跑掉（fixed 定位在有 transform 的祖先底下
@@ -3966,14 +3967,14 @@ function createEndScreenAmbience(container) {
   const leaves = [];
   for (let i = 0; i < LEAF_COUNT; i++) {
     const el = document.createElement('div');
-    el.className = 'end-leaf'; // 固定樣式（position/will-change）在 style.css
     el.textContent = '🌿';
-    // 以下都是每片葉子隨機不同的數值，維持用 inline style 設定
     Object.assign(el.style, {
+      position: 'absolute',
       left: `${5 + Math.random() * 90}%`,
       top: `${5 + Math.random() * 85}%`,
       fontSize: `${20 + Math.random() * 20}px`,
       opacity: `${0.5 + Math.random() * 0.4}`,
+      willChange: 'transform',
     });
     layer.appendChild(el);
     leaves.push({
@@ -3986,67 +3987,32 @@ function createEndScreenAmbience(container) {
     });
   }
 
-  // ── 魚：橘色橢圓 + 會擺動的尾鰭，隨機游動（steering wander：每幀小幅隨機轉向，碰邊界自然反彈）──
+  // ── 魚：橘色橢圓，隨機游動（steering wander：每幀小幅隨機轉向，碰邊界自然反彈）──
   const FISH_COUNT = 5;
   const fish = [];
   for (let i = 0; i < FISH_COUNT; i++) {
+    const el = document.createElement('div');
     const w = 22 + Math.random() * 18;
     const h = w * 0.45;
-
-    // 外層：只負責「位置＋朝向」，身體跟尾巴都是它的子元素，
-    // 這樣尾巴的擺動角度會疊加在魚朝向之上，不用自己重算方向。
-    const el = document.createElement('div');
-    el.className = 'end-fish'; // 固定樣式（position/left/top/will-change）在 style.css
     Object.assign(el.style, {
+      position: 'absolute',
       width: `${w}px`,
       height: `${h}px`,
+      borderRadius: '50%',
+      background: 'radial-gradient(ellipse at 35% 35%, #ffb066, #ff8a3d 60%, #e5691a)',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+      willChange: 'transform',
+      left: '0px',
+      top: '0px',
     });
-
-    // 魚身體（橢圓）── 固定樣式（inset/border-radius/background/box-shadow）都在 style.css 的 .end-fish-body
-    const body = document.createElement('div');
-    body.className = 'end-fish-body';
-
-    // ⚡ 只需要調整兩組數據：中間一組、左右共用一組（左右兩片除了分岔角度相反，
-    // 長度/寬度/塞進身體多少都完全一樣）。想讓中間跟左右看起來不一樣，
-    // 只要改 middleTailConfig 或 sideTailConfig 裡的數字即可。
-    const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
-
-    const middleTailConfig = { tailLen: w * 1.1, tailWidth: h * 0.9, tailOverlap: w * 0.23 };
-    const sideTailConfig   = { tailLen: w * 0.8, tailWidth: h * 0.7, tailOverlap: w * 0.13 };
-
-    const tailConfigs = [
-      { fork: 0,          ...middleTailConfig }, // 中間直的一片
-      { fork: forkAngle,  ...sideTailConfig },    // 右側
-      { fork: -forkAngle, ...sideTailConfig },    // 左側（跟右側共用同一組長寬/overlap數據）
-    ];
-
-    const tailEls = [];
-    tailConfigs.forEach(({ fork, tailLen, tailWidth, tailOverlap }) => {
-      const fin = document.createElement('div');
-      fin.className = 'end-fish-tail'; // 固定樣式（transform-origin/clip-path/background/opacity）在 style.css
-      // 以下是每片尾鰭依 tailLen/tailOverlap 算出來的隨機數值，維持用 inline style 設定
-      Object.assign(fin.style, {
-        left: `${-(tailLen - tailOverlap)}px`,
-        width: `${tailLen}px`,
-        height: `${tailWidth}px`,
-      });
-      el.appendChild(fin);
-      tailEls.push({ el: fin, fork }); // 記住這片尾鰭的固定分岔角度，更新時要疊加擺動角度
-    });
-
-    el.appendChild(body); // body 最後掛，蓋住尾鰭塞進身體範圍內的那段接縫
-
     layer.appendChild(el);
     fish.push({
       el,
-      tailEls, // [{el, fork}, {el, fork}]，取代原本單一的 tailEl
       x: Math.random() * window.innerWidth,
       y: Math.random() * window.innerHeight,
       angle: Math.random() * Math.PI * 2,
       speed: 18 + Math.random() * 22,       // px/秒
-      turnRate: 0.6 + Math.random() * 0.6,  // 每幀轉向弧度
-      tailPhase: Math.random() * Math.PI * 2, // 每條魚擺動起始相位錯開，不會同步甩動
-      tailAmp: 22 + Math.random() * 10,       // 擺動振幅（度）
+      turnRate: 0.6 + Math.random() * 0.6,  // 每秒最大轉向弧度
     });
   }
 
@@ -4088,15 +4054,6 @@ function stepEndScreenAmbience(state, now, prevNow) {
 
     const deg = (f.angle * 180) / Math.PI;
     f.el.style.transform = `translate(${f.x.toFixed(1)}px, ${f.y.toFixed(1)}px) rotate(${deg.toFixed(1)}deg)`;
-
-    // 尾鰭擺動：正弦波，速度越快擺得越快（模擬真實游動節奏）。
-    // 兩片尾鰭共用同一個 wagDeg（整條尾巴一起甩），但各自疊加自己固定的分岔角度(fork)，
-    // 這樣甩動時會維持 V 字分岔的形狀，而不是像剪刀一樣開合。
-    const wagFreqHz = 1.2 + f.speed * 0.06; // 速度快→擺動頻率高
-    const wagDeg = Math.sin(elapsed / 1000 * wagFreqHz * Math.PI * 2 + f.tailPhase) * f.tailAmp;
-    f.tailEls.forEach(({ el: finEl, fork }) => {
-      finEl.style.transform = `translateY(-50%) rotate(${(fork + wagDeg).toFixed(1)}deg)`;
-    });
   }
 }
 

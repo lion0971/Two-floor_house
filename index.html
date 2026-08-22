@@ -67,53 +67,19 @@
 
       if (exitBtn) {
         exitBtn.addEventListener("click", function () {
-          exitApp();
+          // ⚡ exitApp() 現在定義在 main.js（<script type="module">）裡，
+          // module 執行完會把它掛到 window.exitApp（見 main.js 檔尾）。
+          // module script 預設會在 DOMContentLoaded 之前就執行完畢，
+          // 所以正常情況下這裡一定找得到；仍保留防呆，避免 main.js
+          // 載入失敗時整個按鈕沒反應又不知道原因。
+          if (typeof window.exitApp === "function") {
+            window.exitApp();
+          } else {
+            console.error("[離開遊戲] window.exitApp 尚未就緒，main.js 可能載入失敗或還沒執行完");
+          }
         });
       }
     });
-
-    function exitApp() {
-      // 1. 解除滑鼠鎖定
-      if (document.pointerLockElement) {
-        document.exitPointerLock();
-      }
-
-      // 2. 停止動畫迴圈，節省 CPU/GPU
-      if (typeof isAnimating !== "undefined") {
-        isAnimating = false;
-      }
-
-      // 3. 主動補存濾心用量
-      if (typeof FILTER_DEVICES !== "undefined" && typeof filterState !== "undefined") {
-        FILTER_DEVICES.forEach(device => {
-          if (filterState[device]?.isActive) saveFilterUsage(device);
-        });
-      }
-
-      // 4. 釋放 renderer 資源
-      if (typeof renderer !== "undefined") {
-        renderer.dispose();
-      }
-
-      // 5. 直接顯示結尾畫面，不嘗試關閉分頁
-      showCloseFallback();
-    }
-
-    function showCloseFallback() {
-      let fallback = document.getElementById("close-fallback");
-      if (fallback) return; // 避免重複建立
-
-      fallback = document.createElement("div");
-      fallback.id = "close-fallback";
-      fallback.innerHTML = `
-    <div class="close-fallback-box">
-      <div class="close-fallback-icon">🌿</div>
-      <div class="close-fallback-title">體驗結束，期待重逢</div>
-      <div class="close-fallback-tip">To be continued</div>
-    </div>
-  `;
-      document.body.appendChild(fallback);
-    }
   </script>
 
   <script type="importmap">
