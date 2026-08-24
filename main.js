@@ -272,7 +272,7 @@ const STAIRCASE = {
   // 再填回 entranceAngleTop 即可。
   entranceAngle: THREE.MathUtils.degToRad(109.7),           // 樓下入口方位角
   entranceAngleTolerance: THREE.MathUtils.degToRad(50),     // 樓下入口角度容差
-  entranceAngleTop: THREE.MathUtils.degToRad(109.7),        // 樓上入口方位角，暫時跟樓下共用同一值（詳見下方量測注意事項），待更精準量測後再調整
+  entranceAngleTop: THREE.MathUtils.degToRad(25),        // 樓上入口方位角，暫時跟樓下共用同一值（詳見下方量測注意事項），待更精準量測後再調整
   entranceAngleToleranceTop: THREE.MathUtils.degToRad(50),  // 樓上入口角度容差，可獨立調整
 };
 window.STAIRCASE = STAIRCASE; // ⚡ 新增：掛到 window，方便在 console 直接讀取/除錯（例如量測入口角度）
@@ -4235,8 +4235,8 @@ function createEndScreenAmbience(container) {
     // 只要改 middleTailConfig 或 sideTailConfig 裡的數字即可。
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
-    const middleTailConfig = { tailLen: w * 1.08, tailWidth: h * 0.9, tailOverlap: w * 0.15 };
-    const sideTailConfig   = { tailLen: w * 0.83, tailWidth: h * 0.7, tailOverlap: w * 0.05 };
+    const middleTailConfig = { tailLen: w * 0.93, tailWidth: h * 0.9, tailOverlap: w * 0.2 };
+    const sideTailConfig   = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
 
     const tailConfigs = [
       { fork: 0,          ...middleTailConfig }, // 中間直的一片
