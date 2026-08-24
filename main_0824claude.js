@@ -22,13 +22,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/fireba
 import { getDatabase, ref, onValue, get, set, remove, update, increment } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDjEAOsrsDNzukTyacscnc6Bt71_2HVkXg",
-  authDomain: "water-alert-system-79dfa.firebaseapp.com",
-  databaseURL: "https://water-alert-system-79dfa-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "water-alert-system-79dfa",
-};
-
 const fbApp = initializeApp(firebaseConfig);
 
 const db = getDatabase(fbApp);
@@ -63,7 +56,7 @@ const FILTER_PERSIST_ENABLED = true;
 const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-let prevTime = performance.now() / 1000;
+let prevTime = performance.now();
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
@@ -876,6 +869,70 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.85;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
+window.renderer = renderer; // ⚡ 新增：掛到 window，方便 console 直接讀取 renderer.info 等除錯資訊
+
+// ⚡ 暫時性除錯工具：畫面左上角常駐的效能面板，即時顯示 FPS / draw call /
+// 三角形數量。比起用 console 手動對時機，這個能讓你一邊走路一邊親眼
+//看到數字變化，抓卡頓當下的真實數據更準確。確認問題解決後記得移除。
+const debugPanel = document.createElement('div');
+Object.assign(debugPanel.style, {
+  position: 'fixed',
+  top: '8px',
+  left: '8px',
+  zIndex: '9999',
+  background: 'rgba(0,0,0,0.7)',
+  color: '#0f0',
+  font: '13px monospace',
+  padding: '6px 10px',
+  borderRadius: '6px',
+  whiteSpace: 'pre',
+  pointerEvents: 'none',
+});
+document.body.appendChild(debugPanel);
+
+let _debugFrameCount = 0;
+let _debugLastUpdate = performance.now();
+let _debugLastFrameTime = performance.now();
+let _debugMaxFrameMs = 0; // 這一秒內最長的單幀耗時，最能反映「卡頓」那一下
+let _debugLastDrawCalls = 0; // ⚡ 新增：由主渲染呼叫處手動填入的正確累積值
+let _debugLastTriangles = 0;
+
+// ⚡ 暫時性除錯：偵測目前實際在用哪張顯卡跑（內顯/獨顯），
+// 只需要問一次，結果不會變，用來確認「開 DevTools 是否觸發了顯卡切換」。
+let _debugGpuInfo = '（無法取得）';
+try {
+  const _gl = renderer.getContext();
+  const _dbgExt = _gl.getExtension('WEBGL_debug_renderer_info');
+  if (_dbgExt) {
+    _debugGpuInfo = _gl.getParameter(_dbgExt.UNMASKED_RENDERER_WEBGL);
+  } else {
+    _debugGpuInfo = _gl.getParameter(_gl.RENDERER);
+  }
+} catch (e) {
+  _debugGpuInfo = '（讀取失敗）';
+}
+
+function updateDebugPanel() {
+  const now = performance.now();
+  const frameMs = now - _debugLastFrameTime;
+  _debugLastFrameTime = now;
+  if (frameMs > _debugMaxFrameMs) _debugMaxFrameMs = frameMs;
+  _debugFrameCount++;
+
+  if (now - _debugLastUpdate >= 1000) {
+    const fps = _debugFrameCount;
+    debugPanel.textContent =
+      `FPS: ${fps}\n` +
+      `最長單幀: ${_debugMaxFrameMs.toFixed(0)} ms\n` +
+      `draw calls: ${_debugLastDrawCalls}\n` +
+      `triangles: ${_debugLastTriangles}\n` +
+      `座標: ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}\n` +
+      `GPU: ${_debugGpuInfo}`;
+    _debugFrameCount = 0;
+    _debugMaxFrameMs = 0;
+    _debugLastUpdate = now;
+  }
+}
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -3745,41 +3802,15 @@ const WARNING_MS = 60 * 1000; // 60 秒（原本誤寫成 10*1000，跟彈窗文
 // 這個值只在 activeTimers[device].repeatMode === true 時才生效（也就是「已經確認過第一次警告」之後）。
 const WARNING_REPEAT_MS = 10 * 60 * 1000; // 10 分鐘
 
-// ─────────────────────────────────────────
-// 渲染幀率上限
-//
-// 重要：這不是「等待載入」的修正，而是針對「開 F12 Performance 後變順」
-// 這個現象做的修正。Performance 錄製有可能讓瀏覽器的畫面更新節奏
-// 與平常不同；如果電腦/螢幕正在以 120/144/165Hz 執行，這個場景每幀
-// 都要跑 EffectComposer + UnrealBloom + CSS2D + 粒子 + 碰撞，GPU/CPU
-// 可能反而被高刷新率壓滿。
-//
-// 先固定遊戲主迴圈最高 60 FPS，讓「正常執行」盡量接近 Performance
-// 錄製時的負載。如果這版不開 F12 就變順，就能確認原本問題不是
-// shader 等待，而是高刷新率下的每幀負載。
-// ─────────────────────────────────────────
-const TARGET_FPS = 60;
-const FRAME_INTERVAL = 1000 / TARGET_FPS;
-let lastRenderTimeMs = performance.now();
-
-// Console 可輸入 window.GAME_TARGET_FPS 查看目前上限。
-window.GAME_TARGET_FPS = TARGET_FPS;
-
 let isAnimating = true;
 
-function animate(nowMs) {
+function animate() {
 
   if (!isAnimating) return;
 
   requestAnimationFrame(animate);
-
-  // 在 120/144/165Hz 螢幕上，不讓整個遊戲邏輯與 GPU render 每秒執行
-  // 120~165 次。只在達到 60 FPS 的時間點執行一次完整 frame。
-  if (nowMs - lastRenderTimeMs < FRAME_INTERVAL) return;
-
-  lastRenderTimeMs = nowMs;
-
-  const time = nowMs / 1000;
+  updateDebugPanel(); // ⚡ 暫時性除錯：更新畫面左上角效能面板
+  const time = performance.now() / 1000;
   const delta = Math.min(time - prevTime, 0.1);
 
   // 門開關動畫
@@ -3994,11 +4025,22 @@ function animate(nowMs) {
   // 把這段 GPU/CPU 時間讓給葉子提示動畫的 requestAnimationFrame，
   // 徹底解決兩者搶執行緒時間造成的每幀卡頓
   if (sceneRenderEnabled) {
+    // ⚡ 修正 draw call 統計錯誤：renderer.info.autoReset 預設為 true，
+    // 代表每呼叫一次 renderer.render()（composer 內部每個 pass 都會呼叫
+    // 一次）就會自動重置計數器，導致我們讀到的 renderer.info.render.calls
+    // 永遠只反映「最後一個 pass」（通常是後製合成用的單一全螢幕方塊），
+    // 而不是這一整幀真正畫了多少東西。這裡改成手動控制：渲染前先自己
+    // reset 一次，關閉自動重置，composer 內部所有 pass 的 draw call
+    // 就會累加在一起，渲染完之後讀到的才是這一幀真正的總數。
+    renderer.info.autoReset = false;
+    renderer.info.reset();
     composer.render();
     labelRenderer.render(scene, camera);
+    _debugLastDrawCalls = renderer.info.render.calls;
+    _debugLastTriangles = renderer.info.render.triangles;
   }
 }
-requestAnimationFrame(animate);
+animate();
 
 // ─────────────────────────────────────────
 // 十、視窗調整

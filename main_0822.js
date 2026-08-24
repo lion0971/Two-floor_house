@@ -28,7 +28,6 @@ const firebaseConfig = {
   databaseURL: "https://water-alert-system-79dfa-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "water-alert-system-79dfa",
 };
-
 const fbApp = initializeApp(firebaseConfig);
 
 const db = getDatabase(fbApp);
@@ -63,7 +62,7 @@ const FILTER_PERSIST_ENABLED = true;
 const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-let prevTime = performance.now() / 1000;
+let prevTime = performance.now();
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
@@ -122,12 +121,6 @@ let sceneRenderEnabled = false; // 黑幕蓋著時先不渲染 3D 場景，避�
 
 //碰撞宣告head
 let collidableObjects = [];
-// ⚡ collidableObjects / strictCollidableObjects 各自對應的世界座標包圍球清單
-// （中心點+半徑），在 GLTF 載入完成後由 loader.load() 的 callback 填入，
-// 供 checkCurrentCollision() / resolveCollisionSlide() 做「距離篩選」用，
-// 詳見填入的地方的註解說明。
-let collidableSpheres = [];
-let strictCollidableSpheres = [];
 
 let isNoclipMode = false;
 let isStuckInWall = false;
@@ -193,15 +186,6 @@ const _tmpMoveDir = new THREE.Vector3();
 const _tmpHitNormal = new THREE.Vector3();
 const _tmpLateral = new THREE.Vector3(); // ⚡ 新增：垂直於移動方向的水平向量，用來算左右偵測點
 
-// ⚡ 樓梯移動方向計算專用：從 camera.quaternion 用正確的 'YXZ' 順序反推出
-// 純水平朝向（yaw）。不能直接讀 camera.rotation.y —— 那是用 three.js
-// Object3D 預設的 'XYZ' 順序分解出來的角度，跟 PointerLockControls
-// 實際組合旋轉用的 'YXZ' 順序不一致，抬頭/低頭角度越大誤差越明顯，
-// 甚至會讓算出來的水平移動方向趨近於零向量，導致「頭朝下走樓梯時
-// 卡在樓梯底部，怎麼走都出不去」的 bug（詳見 updateStaircase()）。
-const _stairYawEuler = new THREE.Euler(0, 0, 0, 'YXZ');
-const _stairUpAxis = new THREE.Vector3(0, 1, 0);
-
 /** 依目前模式回傳管路「非啟動」狀態的透明度 */
 function getInactivePipeOpacity() {
   return isXRayMode ? 0.45 : 0.12;
@@ -259,34 +243,9 @@ const STAIRCASE = {
   // ⚡ 新增：真正入口的方位角（用 console 量到的 109.7° 換算成弧度），
   // 只有從這個角度附近靠近樓梯才會被吸進「軌道自走模式」，
   // 避免玩家從欄杆縫隙鑽進去，卻用錯誤角度反推出跟樓上出口對不上的軌道。
-  //
-  // ⚡ 拆成「樓下入口」跟「樓上入口」兩組獨立角度/容差：
-  // 理論上 turns:1（轉一圈360度）代表樓上出口跟樓下入口的方位角
-  // 應該完全相同，但實際3D模型裡樓上/樓下的牆面、走道、欄杆開口
-  // 位置是各自單獨建模的，常會有些微誤差——同一個角度值對樓下剛好準，
-  // 對樓上卻會偏差一點，導致「樓上要下樓時要橫移一小段才能進入」。
-  // 拆開後可以各自微調到最順的角度，不用強迫共用同一個值。
-  // 如果之後實測發現需要微調，可以在 updateStaircase() 開頭暫時加一行
-  // console.log(THREE.MathUtils.radToDeg(Math.atan2(dz, dx))) 印出
-  // 「玩家目前方位角」，站在樓上正對入口的位置量出實際角度，
-  // 再填回 entranceAngleTop 即可。
-  entranceAngle: THREE.MathUtils.degToRad(109.7),           // 樓下入口方位角
-  entranceAngleTolerance: THREE.MathUtils.degToRad(50),     // 樓下入口角度容差
-  entranceAngleTop: THREE.MathUtils.degToRad(109.7),        // 樓上入口方位角，暫時跟樓下共用同一值（詳見下方量測注意事項），待更精準量測後再調整
-  entranceAngleToleranceTop: THREE.MathUtils.degToRad(50),  // 樓上入口角度容差，可獨立調整
+  entranceAngle: THREE.MathUtils.degToRad(109.7),
+  entranceAngleTolerance: THREE.MathUtils.degToRad(35), // 容許誤差角度，太寬鬆會讓縫隙鑽入問題重現，太嚴格會進不去入口
 };
-window.STAIRCASE = STAIRCASE; // ⚡ 新增：掛到 window，方便在 console 直接讀取/除錯（例如量測入口角度）
-
-// ⚡ 依玩家目前高度（在樓梯中點以上或以下），決定該用「樓上」還是
-// 「樓下」那一組入口角度/容差。resolveStaircaseCylinderCollision() 跟
-// updateStaircase() 的入口判定都改呼叫這個函式，確保兩處邏輯一致。
-const STAIR_MID_Y = STAIRCASE.center.y + STAIRCASE.totalHeight / 2;
-function getStairEntranceConfig(cameraY) {
-  const isUpperApproach = cameraY > STAIR_MID_Y;
-  return isUpperApproach
-    ? { angle: STAIRCASE.entranceAngleTop, tolerance: STAIRCASE.entranceAngleToleranceTop }
-    : { angle: STAIRCASE.entranceAngle, tolerance: STAIRCASE.entranceAngleTolerance };
-}
 
 let isOnStairRail = false;  // 是否正處於「樓梯軌道自走模式」
 let stairHeight = 0;        // 目前在樓梯上的高度（0 ~ totalHeight）
@@ -992,13 +951,8 @@ function checkCurrentCollision() {
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist <= STAIRCASE.radius) {
         const approachAngle = Math.atan2(dz, dx);
-        // ⚡ 改用 getStairEntranceConfig()：跟另外兩處入口角度判定
-        // （resolveStaircaseCylinderCollision / updateStaircase）用同一套
-        // 「依高度分樓上/樓下」設定，三處保持一致。
-        const { angle: entranceAngleForHeight, tolerance: entranceToleranceForHeight } =
-          getStairEntranceConfig(camera.position.y);
-        const diffFromEntrance = Math.abs(angleDiff(approachAngle, entranceAngleForHeight));
-        if (diffFromEntrance > entranceToleranceForHeight) {
+        const diffFromEntrance = Math.abs(angleDiff(approachAngle, STAIRCASE.entranceAngle));
+        if (diffFromEntrance > STAIRCASE.entranceAngleTolerance) {
           return true; // 卡在樓梯圓柱範圍內、且不是從入口角度進來，視為卡住
         }
       }
@@ -1006,16 +960,13 @@ function checkCurrentCollision() {
   }
 
   if (collidableObjects.length === 0) return false;
-  // ⚡ 效能優化：先篩出附近的牆壁，這個frame內的所有射線檢測共用同一份，
-  // 不用每個方向、每個偏移點都重新篩一次。
-  const nearby = getNearbyCollidables(collidableObjects, collidableSpheres);
   for (const dir of rayDirections) {
     _tmpWorldDir.copy(dir).applyQuaternion(camera.quaternion).normalize();
 
     _tmpOrigin.copy(camera.position);
     _tmpOrigin.y += COLLISION_EYE_HEIGHT_OFFSET;
     raycaster.set(_tmpOrigin, _tmpWorldDir);
-    let intersects = raycaster.intersectObjects(nearby);
+    let intersects = raycaster.intersectObjects(collidableObjects);
     if (intersects.length > 0 && intersects[0].distance < 0.2) return true;
 
     _tmpLateral.set(-_tmpWorldDir.z, 0, _tmpWorldDir.x).normalize();
@@ -1025,7 +976,7 @@ function checkCurrentCollision() {
       _tmpOrigin.x += _tmpLateral.x * lateralOffset;
       _tmpOrigin.z += _tmpLateral.z * lateralOffset;
       raycaster.set(_tmpOrigin, _tmpWorldDir);
-      intersects = raycaster.intersectObjects(nearby);
+      intersects = raycaster.intersectObjects(collidableObjects);
       if (intersects.length > 0 && intersects[0].distance < 0.2) return true;
     }
   }
@@ -1057,56 +1008,13 @@ function checkCurrentCollision() {
 // 檢測其他牆面，直到不再碰撞或迭代次數用完為止。
 const MAX_SLIDE_ITERATIONS = 3;
 
-// ⚡ 效能優化：距離篩選，只挑出玩家「附近」的牆壁 mesh 給後面的射線檢測用，
-// 不用每一幀都對整棟房子的牆壁打射線。用「兩點距離」這種很便宜的算術
-// 先做初步篩選，比對每一片牆都打射線便宜非常多。
-//
-// NEARBY_COLLISION_RADIUS：篩選半徑（公尺）。這個數字要比「房間對角線
-// 最大長度」大一些，確保玩家站在房間任何角落，該房間所有牆壁都還在
-// 篩選範圍內，不會漏檢查；但也不能設太大，否則篩選效果不明顯。
-// 如果之後發現「明明看得到牆卻穿過去」，優先檢查是不是這個半徑設太小。
-const NEARBY_COLLISION_RADIUS = 8;
-// 篩選時用「兩點距離 <= NEARBY_COLLISION_RADIUS + 該牆包圍球半徑」判斷，
-// 等同於用平方距離比較（避免每次呼叫 Math.sqrt，更省效能）：
-// distSq <= (NEARBY_COLLISION_RADIUS + sphere.radius)^2
-const _nearbyFilterResult = []; // ⚡ 重複使用同一個陣列，避免每次篩選都 new 一個新陣列
-
-/**
- * 從 sourceObjects（+ 對應的 sourceSpheres 包圍球清單）裡，篩選出
- * 距離玩家目前位置 NEARBY_COLLISION_RADIUS 公尺內的 mesh，回傳
- * （重複使用的）陣列，供 raycaster.intersectObjects() 使用。
- * sourceObjects 跟 sourceSpheres 必須是一一對應、長度相同的兩個陣列
- * （分別對應 collidableObjects/collidableSpheres 或
- * strictCollidableObjects/strictCollidableSpheres）。
- */
-function getNearbyCollidables(sourceObjects, sourceSpheres) {
-  _nearbyFilterResult.length = 0;
-  for (let i = 0; i < sourceObjects.length; i++) {
-    const sphere = sourceSpheres[i];
-    if (!sphere) continue; // 保險：包圍球清單還沒建好時（理論上不會發生）就跳過
-    const dx = sphere.center.x - camera.position.x;
-    const dy = sphere.center.y - camera.position.y;
-    const dz = sphere.center.z - camera.position.z;
-    const maxDist = NEARBY_COLLISION_RADIUS + sphere.radius;
-    if (dx * dx + dy * dy + dz * dz <= maxDist * maxDist) {
-      _nearbyFilterResult.push(sourceObjects[i]);
-    }
-  }
-  return _nearbyFilterResult;
-}
-
-function resolveCollisionSlide(moveVelocity, targetObjects, targetSpheres) {
+function resolveCollisionSlide(moveVelocity, targetObjects) {
   if (targetObjects.length === 0 || (moveVelocity.x === 0 && moveVelocity.z === 0)) return;
 
   // 保留一份原始輸入方向，如果下面疊代用完仍卡住（被夾在轉角/夾縫），
   // 用這份原始值算「退回」的方向，而不是把速度歸零讓人卡死不動。
   const originalX = moveVelocity.x;
   const originalZ = moveVelocity.z;
-
-  // ⚡ 效能優化：先篩出附近的牆壁，這一次呼叫（最多 MAX_SLIDE_ITERATIONS 輪
-  // 疊代）都共用同一份篩選結果，不用每輪疊代都重新篩一次。
-  const nearby = getNearbyCollidables(targetObjects, targetSpheres);
-  if (nearby.length === 0) return;
 
   for (let iter = 0; iter < MAX_SLIDE_ITERATIONS; iter++) {
     if (moveVelocity.x === 0 && moveVelocity.z === 0) return;
@@ -1127,7 +1035,7 @@ function resolveCollisionSlide(moveVelocity, targetObjects, targetSpheres) {
       _tmpOrigin.x += _tmpLateral.x * lateralOffset;
       _tmpOrigin.z += _tmpLateral.z * lateralOffset;
       raycaster.set(_tmpOrigin, _tmpMoveDir);
-      const intersects = raycaster.intersectObjects(nearby);
+      const intersects = raycaster.intersectObjects(targetObjects);
       if (intersects.length > 0 && intersects[0].distance < collisionDistance) {
         if (!closestHit || intersects[0].distance < closestHit.distance) {
           closestHit = intersects[0];
@@ -1142,7 +1050,7 @@ function resolveCollisionSlide(moveVelocity, targetObjects, targetSpheres) {
     _tmpOrigin.copy(camera.position);
     _tmpOrigin.y += COLLISION_EYE_HEIGHT_OFFSET; // ← 改用獨立常數，不再靠索引 0
     raycaster.set(_tmpOrigin, _tmpMoveDir);
-    const centerIntersects = raycaster.intersectObjects(nearby);
+    const centerIntersects = raycaster.intersectObjects(targetObjects);
     if (centerIntersects.length > 0 && centerIntersects[0].distance < collisionDistance) {
       if (!closestHit || centerIntersects[0].distance < closestHit.distance) {
         closestHit = centerIntersects[0];
@@ -1198,13 +1106,6 @@ function resolveStaircaseCylinderCollision(moveVelocity) {
 
   // 玩家目前已經在圓柱範圍內（例如正走在樓梯本體上）就不需要這層碰撞，
   // 交給既有的樓梯 mesh / 軌道系統處理，避免互相干擾。
-  // ⚡ 曾經試過把這個半徑放大成 STAIRCASE.radius + STAIRCASE.radiusMargin，
-  // 想跟 updateStaircase() 的「直接放行進入軌道」判定範圍對齊，
-  // 但這樣會讓樓梯圓柱碰撞的判定圈跟樓梯欄杆/牆面的一般碰撞範圍重疊，
-  // 兩套碰撞系統（這裡的切線滑動 vs. resolveCollisionSlide 的牆壁推擠）
-  // 互相頂住，導致完全卡死、動彈不得，比原本「要橫移才能下樓」更嚴重。
-  // 因此改回原本的 STAIRCASE.radius，只在下面放寬角度容許度來解決
-  // 「容易被擋、要橫移一段才能下樓」的問題，不再更動碰撞邊界位置。
   if (curDist <= STAIRCASE.radius) return;
 
   const nextDx = (camera.position.x + moveVelocity.x) - STAIRCASE.center.x;
@@ -1215,13 +1116,9 @@ function resolveStaircaseCylinderCollision(moveVelocity) {
   if (nextDist > STAIRCASE.radius) return;
 
   // 檢查是否從真正入口角度靠近；是的話放行，讓 updateStaircase() 接手判斷
-  // ⚡ 改用 getStairEntranceConfig()：樓上/樓下各自用獨立的入口角度與容差，
-  // 不再共用同一組，避免「理論上該對齊、實際模型有誤差」造成的偏移問題。
   const approachAngle = Math.atan2(curDz, curDx);
-  const { angle: entranceAngleForHeight, tolerance: entranceToleranceForHeight } =
-    getStairEntranceConfig(camera.position.y);
-  const diffFromEntrance = Math.abs(angleDiff(approachAngle, entranceAngleForHeight));
-  if (diffFromEntrance <= entranceToleranceForHeight) return;
+  const diffFromEntrance = Math.abs(angleDiff(approachAngle, STAIRCASE.entranceAngle));
+  if (diffFromEntrance <= STAIRCASE.entranceAngleTolerance) return;
 
   // 非入口角度 → 視為撞到圓柱牆面，沿切線方向滑動（法向量＝由中心指向玩家）
   const nx = curDx / curDist;
@@ -1240,7 +1137,7 @@ function handleMovementAndCollision(moveVelocity) {
   }
 
   if (isNoclipMode) {
-    resolveCollisionSlide(moveVelocity, strictCollidableObjects, strictCollidableSpheres);
+    resolveCollisionSlide(moveVelocity, strictCollidableObjects);
     camera.position.add(moveVelocity);
     return;
   }
@@ -1257,7 +1154,7 @@ function handleMovementAndCollision(moveVelocity) {
   for (let i = 0; i < MAX_SLIDE_ITERATIONS; i++) {
     const beforeX = moveVelocity.x;
     const beforeZ = moveVelocity.z;
-    resolveCollisionSlide(moveVelocity, collidableObjects, collidableSpheres);
+    resolveCollisionSlide(moveVelocity, collidableObjects);
     resolveStaircaseCylinderCollision(moveVelocity);
     if (moveVelocity.x === beforeX && moveVelocity.z === beforeZ) break;
   }
@@ -1310,13 +1207,9 @@ function updateStaircase(delta) {
     // ⚡ 新增：只有靠近角度落在「真正入口」附近（entranceAngle ± tolerance）
     // 才允許進入軌道自走模式，避免從欄杆縫隙鑽入時用錯誤角度反推出
     // 跟樓上出口對不上的軌道基準，導致上樓後卡在欄杆裡走不出去。
-    // ⚡ 改用 getStairEntranceConfig()：跟 resolveStaircaseCylinderCollision()
-    // 用同一套「依高度分樓上/樓下」的角度與容差，兩處判定才會一致。
-    const { angle: entranceAngleForHeight, tolerance: entranceToleranceForHeight } =
-      getStairEntranceConfig(camera.position.y);
-    const diffFromEntrance = Math.abs(angleDiff(entryAngle, entranceAngleForHeight));
+    const diffFromEntrance = Math.abs(angleDiff(entryAngle, STAIRCASE.entranceAngle));
 
-    if (diffFromEntrance <= entranceToleranceForHeight) {
+    if (diffFromEntrance <= STAIRCASE.entranceAngleTolerance) {
       isOnStairRail = true;
       stairHeight = (camera.position.y > STAIRCASE.center.y + STAIRCASE.totalHeight / 2)
         ? STAIRCASE.totalHeight
@@ -1335,20 +1228,8 @@ function updateStaircase(delta) {
 
   if (inputZ !== 0 || inputX !== 0) {
     const localDir = new THREE.Vector3(inputX, 0, -inputZ).normalize(); // ← 加负号
-
-    // ⚡ 修正「頭朝下走樓梯會卡在底部出不去」的 bug：
-    // 原本直接用 camera.quaternion（含 pitch 上下仰角）去轉換移動方向，
-    // 頭朝下時 camera 前方向量幾乎垂直朝下，水平分量趨近於 0，
-    // 強制 worldDir.y=0 後再 normalize()，方向資訊消失或變得極不穩定，
-    // 導致 inputDir 算不出來、stairHeight 卡住不動、isOnStairRail
-    // 一直是 true，玩家被鎖在樓梯圓形軌道上出不去。
-    // 改成用 'YXZ' 順序（跟 PointerLockControls 內部一致）從
-    // camera.quaternion 反推出純水平朝向（yaw），再用這個 yaw 去旋轉
-    // localDir。這樣不管玩家頭抬多高、低多低，算出來的水平移動方向
-    // 永遠穩定、正確，不受視角俯仰角度干擾。
-    _stairYawEuler.setFromQuaternion(camera.quaternion, 'YXZ');
-    const worldDir = localDir.applyAxisAngle(_stairUpAxis, _stairYawEuler.y);
-    worldDir.y = 0; // 理論上必為0，保留只是保險
+    const worldDir = localDir.applyQuaternion(camera.quaternion);
+    worldDir.y = 0;
     worldDir.normalize();
 
     const angleNow = stairAngleOffset - (stairHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
@@ -2234,32 +2115,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
     poolBounds = new THREE.Box3();
     poolWaterMeshes.forEach(m => poolBounds.union(new THREE.Box3().setFromObject(m)));
   }
-
-  // ⚡ 效能優化：碰撞偵測（checkCurrentCollision / resolveCollisionSlide）
-  // 原本每一幀都要對「整棟房子」的 collidableObjects / strictCollidableObjects
-  // 逐一打射線檢查，不管玩家人在哪個房間，客廳、樓上的牆壁也都要陪著一起
-  // 檢查，房子越大、牆越多，成本越高（Performance 面板量到光是碰撞相關的
-  // raycasting 就佔了整體 scripting 時間一大塊）。
-  // 這裡在牆壁清單建立完成後，預先算好每片牆的「世界座標包圍球」
-  // （中心點 + 半徑），只需要算一次，之後每一幀就能用「兩點距離」這種
-  // 非常便宜的算術，先篩掉離玩家很遠、不可能撞到的牆，再拿篩選後的
-  // 小清單去做真正昂貴的射線檢測，大幅降低每幀要檢查的物件數量。
-  const collidableSpheresResult = collidableObjects.map(mesh => {
-    const box = new THREE.Box3().setFromObject(mesh);
-    const sphere = new THREE.Sphere();
-    box.getBoundingSphere(sphere);
-    return sphere;
-  });
-  const strictCollidableSpheresResult = strictCollidableObjects.map(mesh => {
-    const box = new THREE.Box3().setFromObject(mesh);
-    const sphere = new THREE.Sphere();
-    box.getBoundingSphere(sphere);
-    return sphere;
-  });
-  // 賦值給模組層級變數（宣告在檔案上方，跟 collidableObjects 放一起），
-  // 這樣 checkCurrentCollision() / resolveCollisionSlide() 才讀得到。
-  collidableSpheres = collidableSpheresResult;
-  strictCollidableSpheres = strictCollidableSpheresResult;
 
   // ✅ 建立水流
   interactiveDevices.forEach(mesh => {
@@ -3308,6 +3163,7 @@ function collectBulbs() {
 // 掛在 manager.onLoad 之後執行
 const _origOnLoad = manager.onLoad;
 manager.onLoad = () => {
+  _origOnLoad?.();
   collectBulbs();
   applyDayNight(parseFloat(daySlider.value));
   currentBulbStrength = targetBulbStrength;
@@ -3320,115 +3176,18 @@ manager.onLoad = () => {
   // 而移動迴圈的 delta 有 Math.min(time - prevTime, 0.1) 這個上限（見動畫迴圈），
   // 代表卡頓恢復的那一幀，會直接套用長達 0.1 秒份量的移動速度，
   // 感覺上就像「頓一下、然後瞬間往前衝一段」。
-  //
-  // ⚡ 但原本這裡直接傳入玩家「起始位置的 camera」去編譯，還是只涵蓋
-  // 走廊那個視野看得到的材質——compile()/compileAsync() 內部判斷「要不要
-  // 編譯某個物件」，用的是跟正式 render() 一樣的視錐體剔除(frustum culling)，
-  // 所以客廳等「起始視角根本看不到」的房間，材質依然完全沒被編譯到，
-  // bug 沒有真正解決。
-  //
-  // 改成造一台「上帝視角」的假攝影機：架在整棟房子正上方、由上往下俯瞰，
-  // 視野涵蓋整個房子的水平範圍與高度，用這台假攝影機去編譯，
-  // 不管客廳、臥室、樓上樓下，只要在房子範圍內都會落在視野裡，
-  // 一次全部編譯完。編譯完這台假攝影機就直接丟掉，不影響玩家實際畫面。
-  const sceneBox = new THREE.Box3().setFromObject(scene);
-  const sceneSize = new THREE.Vector3();
-  const sceneCenter = new THREE.Vector3();
-  sceneBox.getSize(sceneSize);
-  sceneBox.getCenter(sceneCenter);
-
-  // 用正交攝影機（Orthographic）而非透視攝影機：正交攝影機的視野是一個
-  // 方方正正的箱子，範圍設定直觀好算，不用擔心透視角度算錯導致邊緣物件
-  // 漏出視野外；left/right/top/bottom 直接對應房子的水平範圍（X/Z），
-  // 各留 2 公尺餘裕避免邊界物件卡在剛好被裁掉的邊緣。
-  const MARGIN = 2;
-  const halfX = sceneSize.x / 2 + MARGIN;
-  const halfZ = sceneSize.z / 2 + MARGIN;
-  const compileCamera = new THREE.OrthographicCamera(
-    -halfX, halfX, halfZ, -halfZ,
-    0.1, sceneSize.y + MARGIN * 2
-  );
-  // 架在房子最高點再往上一點的正上方，垂直往下看，near/far 涵蓋整個房子高度
-  compileCamera.position.set(sceneCenter.x, sceneBox.max.y + MARGIN, sceneCenter.z);
-  compileCamera.lookAt(sceneCenter.x, sceneBox.min.y, sceneCenter.z);
-  compileCamera.updateMatrixWorld();
-
-  // ⚡ compile()/compileAsync() 只會編譯 shader「程式」，不會把材質
-  // 用到的「貼圖」真正上傳到 GPU（貼圖上傳/產生 mipmap 通常是等材質第一次
-  // 真的被畫出來才會做）。這裡額外用同一台上帝視角攝影機，把整個場景
-  // 實際「渲染一次」到一個看不見的離屏畫布（WebGLRenderTarget）上，
-  // 強迫所有貼圖也在載入階段一次上傳完。渲染完立刻 dispose 釋放，不會留在記憶體。
-  function warmUpTexturesAndPrograms() {
-    const warmupTarget = new THREE.WebGLRenderTarget(64, 64); // 尺寸不重要，只是要觸發實際繪製
-    const prevTarget = renderer.getRenderTarget();
-    renderer.setRenderTarget(warmupTarget);
-    renderer.render(scene, compileCamera);
-    renderer.setRenderTarget(prevTarget);
-    warmupTarget.dispose();
-
-    // ⚡ 修正「setProgram 佔 30% 時間、還是會卡」的關鍵漏洞：
-    // 上面 renderer.render() 只會暖機「場景本身材質」的 shader，
-    // 但遊戲實際渲染時走的是 composer.render()（EffectComposer +
-    // RenderPass + UnrealBloomPass），這條後製特效管線用的是完全
-    // 獨立的一組 shader（模糊、合成等），從來沒被暖機過，玩家真正
-    // 點擊開始、composer 第一次真的跑起來時，這組 shader 才臨時
-    // 編譯，就是殘留卡頓的來源。這裡額外讓 composer 也跑一次，
-    // 讓這組後製 shader 一起在載入階段編譯完成。
-    //
-    // composer 內部的 RenderPass 是綁定「真正的玩家攝影機」camera，
-    // 不是我們的 compileCamera，所以這裡不需要（也無法簡單）換攝影機，
-    // 直接用當下的 camera 跑一次即可——後製特效的 shader 種類是固定的，
-    // 跟場景內容/攝影機位置無關，跑一次就能讓這組 shader 全部就緒。
-    // 注意：composer.render() 內部每個 pass 會自行決定渲染目標
-    // （最後一個 pass 預設畫到螢幕），這裡就算想重導到離屏目標也無效，
-    // 但此時畫面外層還蓋著全黑的 blackCover DOM 圖層，玩家看不到
-    // 這一幀，不需要額外處理。
-    composer.render();
-  }
-
-  // ⚡ 修正時序 bug：原本 _origOnLoad()（也就是 finishLoading，負責讓黑幕
-  // 淡出、顯示「點擊畫面開始」）是在這個 function 一開頭就立刻同步執行，
-  // 但下面的 shader 編譯/貼圖熱身卻是「非同步」的，晚一點才會真正完成。
-  // 這代表玩家手速夠快的話，很可能在編譯真正做完之前就已經點擊開始、
-  // 開始走動了——等於帶著還在背景偷跑的編譯工作進場，第一趟自然還是會卡，
-  // 直到真正跑完一輪之後才會變得滑順（也就是「回程忽然變超快/超滑順」
-  // 這個體感落差的真正原因）。
-  // 改成把 _origOnLoad() 移到這裡：確定 shader 編譯 + 貼圖熱身都「真正」
-  // 完成之後才呼叫，玩家會多在黑幕/loading畫面停留一點點時間，
-  // 但换來的是一進場走第一趟就是完全滑順的體驗，不會有「要走過一輪
-  // 才會變快」這種不一致的感受。
-  function revealGameAfterWarmup() {
-    warmUpTexturesAndPrograms();
-    // ⚡ 額外保險：非同步 shader 編譯（KHR_parallel_shader_compile）的
-    // Promise 有時會比 GPU 驅動端真正處理完稍微早一點 resolve，這裡
-    // 用 requestAnimationFrame 多等兩幀，給驅動一點點緩衝時間把背景
-    // 工作徹底做完，再揭曉遊戲。這不是「猜一個固定時間」treat 症狀，
-    // 而是在確定該做的暖機動作都做完之後，再留一個很小的安全邊際。
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        _origOnLoad?.();
-      });
+  // 這裡趁黑幕還沒淡出、玩家還沒開始移動前，主動把整個場景所有材質
+  // 一次預先編譯完，之後不管走到哪個房間，都不會再臨時卡頓。
+  if (renderer.compileAsync) {
+    renderer.compileAsync(scene, camera).catch(err => {
+      console.warn('[shader 預編譯] compileAsync 失敗，退回同步 compile()', err);
+      renderer.compile(scene, camera);
     });
+  } else {
+    // 舊版 three.js 沒有 compileAsync，退回同步版本（仍然比「臨時卡頓」好，
+    // 因為這裡執行時黑幕還沒淡出，玩家根本還看不到畫面）
+    renderer.compile(scene, camera);
   }
-
-  // ⚡ 修正「有開 DevTools 錄 Performance 就順、沒開就卡，且跟等待
-  // 時間長短無關」的關鍵問題：
-  // compileAsync() 依賴 KHR_parallel_shader_compile 擴充，讓 shader
-  // 編譯丟到瀏覽器背景執行緒處理，只用「非阻塞查詢完成狀態」的方式
-  // 檢查有沒有做完，不會真的強制等待。背景執行緒能分到多少 CPU 時間，
-  // 是由瀏覽器動態排程決定的——開著 DevTools 錄製 Performance 時，
-  // Chrome 會拉高該分頁處理程序的優先度（讓錄到的數據更準確），
-  // 背景編譯執行緒才因此分到足夠 CPU 時間、真的編譯完成；沒開
-  // DevTools 時，這個背景執行緒優先度較低，就算多等再久，也可能
-  // 因為排程機制的關係一直沒有真正編譯完成。
-  // 這種「背景執行緒優先度」完全不受 JavaScript 控制，所以乾脆不要
-  // 依賴 compileAsync，改成只用同步的 renderer.compile()——同步版本
-  // 內部呼叫的是傳統、真正會阻塞的 GPU 指令（不透過那個非阻塞查詢
-  // 完成狀態的擴充），保證回傳的當下就是 100% 真的編譯完成，不受
-  // 任何背景排程優先度影響。這裡執行時黑幕還沒淡出，玩家看不到這段
-  // 同步卡頓，只是 loading 畫面停留久一點點，不影響遊戲進行中的流暢度。
-  renderer.compile(scene, compileCamera);
-  revealGameAfterWarmup();
 };
 
 // ── 滑桿容器（預設隱藏）──
@@ -3745,41 +3504,14 @@ const WARNING_MS = 60 * 1000; // 60 秒（原本誤寫成 10*1000，跟彈窗文
 // 這個值只在 activeTimers[device].repeatMode === true 時才生效（也就是「已經確認過第一次警告」之後）。
 const WARNING_REPEAT_MS = 10 * 60 * 1000; // 10 分鐘
 
-// ─────────────────────────────────────────
-// 渲染幀率上限
-//
-// 重要：這不是「等待載入」的修正，而是針對「開 F12 Performance 後變順」
-// 這個現象做的修正。Performance 錄製有可能讓瀏覽器的畫面更新節奏
-// 與平常不同；如果電腦/螢幕正在以 120/144/165Hz 執行，這個場景每幀
-// 都要跑 EffectComposer + UnrealBloom + CSS2D + 粒子 + 碰撞，GPU/CPU
-// 可能反而被高刷新率壓滿。
-//
-// 先固定遊戲主迴圈最高 60 FPS，讓「正常執行」盡量接近 Performance
-// 錄製時的負載。如果這版不開 F12 就變順，就能確認原本問題不是
-// shader 等待，而是高刷新率下的每幀負載。
-// ─────────────────────────────────────────
-const TARGET_FPS = 60;
-const FRAME_INTERVAL = 1000 / TARGET_FPS;
-let lastRenderTimeMs = performance.now();
-
-// Console 可輸入 window.GAME_TARGET_FPS 查看目前上限。
-window.GAME_TARGET_FPS = TARGET_FPS;
-
 let isAnimating = true;
 
-function animate(nowMs) {
+function animate() {
 
   if (!isAnimating) return;
 
   requestAnimationFrame(animate);
-
-  // 在 120/144/165Hz 螢幕上，不讓整個遊戲邏輯與 GPU render 每秒執行
-  // 120~165 次。只在達到 60 FPS 的時間點執行一次完整 frame。
-  if (nowMs - lastRenderTimeMs < FRAME_INTERVAL) return;
-
-  lastRenderTimeMs = nowMs;
-
-  const time = nowMs / 1000;
+  const time = performance.now() / 1000;
   const delta = Math.min(time - prevTime, 0.1);
 
   // 門開關動畫
@@ -3998,7 +3730,7 @@ function animate(nowMs) {
     labelRenderer.render(scene, camera);
   }
 }
-requestAnimationFrame(animate);
+animate();
 
 // ─────────────────────────────────────────
 // 十、視窗調整
