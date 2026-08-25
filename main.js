@@ -22,13 +22,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/fireba
 import { getDatabase, ref, onValue, get, set, remove, update, increment } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDjEAOsrsDNzukTyacscnc6Bt71_2HVkXg",
-  authDomain: "water-alert-system-79dfa.firebaseapp.com",
-  databaseURL: "https://water-alert-system-79dfa-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "water-alert-system-79dfa",
-};
-
 const fbApp = initializeApp(firebaseConfig);
 
 const db = getDatabase(fbApp);
@@ -272,7 +265,7 @@ const STAIRCASE = {
   // 再填回 entranceAngleTop 即可。
   entranceAngle: THREE.MathUtils.degToRad(109.7),           // 樓下入口方位角
   entranceAngleTolerance: THREE.MathUtils.degToRad(50),     // 樓下入口角度容差
-  entranceAngleTop: THREE.MathUtils.degToRad(25),        // 樓上入口方位角，暫時跟樓下共用同一值（詳見下方量測注意事項），待更精準量測後再調整
+  entranceAngleTop: THREE.MathUtils.degToRad(109.7),        // 樓上入口方位角，暫時跟樓下共用同一值（詳見下方量測注意事項），待更精準量測後再調整
   entranceAngleToleranceTop: THREE.MathUtils.degToRad(50),  // 樓上入口角度容差，可獨立調整
 };
 window.STAIRCASE = STAIRCASE; // ⚡ 新增：掛到 window，方便在 console 直接讀取/除錯（例如量測入口角度）
@@ -2357,25 +2350,6 @@ Object.assign(xrayBtn.style, {
   fontSize: '15px',
   width: '100%',
 });
-
-// ── ⏳ 透視模式切換提示（三點輪流閃爍）──
-const xrayTransitionOverlay = document.createElement('div');
-xrayTransitionOverlay.id = 'xray-transition-overlay';
-xrayTransitionOverlay.innerHTML = `
-  <div class="xray-transition-box">
-    <div class="xray-transition-dots"><span></span><span></span><span></span></div>
-    <div class="xray-transition-label">切換中，請稍候</div>
-  </div>
-`;
-document.body.appendChild(xrayTransitionOverlay);
-
-function showXrayTransition() {
-  xrayTransitionOverlay.classList.add('show');
-}
-function hideXrayTransition() {
-  xrayTransitionOverlay.classList.remove('show');
-}
-
 xrayBtn.onclick = (e) => {
   e.stopPropagation();
   unlockFromButton = true;
@@ -2384,26 +2358,18 @@ xrayBtn.onclick = (e) => {
   xrayBtn.style.background = isXRayMode
     ? 'rgba(0,255,255,0.5)'
     : 'rgba(0,255,255,0.2)';
+  toggleXRayMode(isXRayMode);
   menuPanel.style.display = 'none';
 
+  // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
+  // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
   const exitBtn = document.getElementById('exit-btn');
   if (exitBtn) exitBtn.classList.remove('show');
 
-  // ⚡ 先顯示切換提示，並用兩次 requestAnimationFrame
-  // 確保瀏覽器已經把「三點動畫」畫到畫面上，
-  // 才去執行會造成卡頓的 toggleXRayMode()。
-  showXrayTransition();
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      toggleXRayMode(isXRayMode);
-      hideXrayTransition();
-
-      setTimeout(() => {
-        unlockFromButton = false;
-        controls.lock();
-      }, 80);
-    });
-  });
+  setTimeout(() => {
+    unlockFromButton = false;
+    controls.lock();
+  }, 80);
 };
 menuPanel.appendChild(xrayBtn);
 
@@ -4262,12 +4228,12 @@ function createEndScreenAmbience(container) {
     // 只要改 middleTailConfig 或 sideTailConfig 裡的數字即可。
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
-    const middleTailConfig = { tailLen: w * 0.93, tailWidth: h * 0.9, tailOverlap: w * 0.2 };
-    const sideTailConfig = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
+    const middleTailConfig = { tailLen: w * 1.08, tailWidth: h * 0.9, tailOverlap: w * 0.15 };
+    const sideTailConfig   = { tailLen: w * 0.83, tailWidth: h * 0.7, tailOverlap: w * 0.05 };
 
     const tailConfigs = [
-      { fork: 0, ...middleTailConfig }, // 中間直的一片
-      { fork: forkAngle, ...sideTailConfig },    // 右側
+      { fork: 0,          ...middleTailConfig }, // 中間直的一片
+      { fork: forkAngle,  ...sideTailConfig },    // 右側
       { fork: -forkAngle, ...sideTailConfig },    // 左側（跟右側共用同一組長寬/overlap數據）
     ];
 
