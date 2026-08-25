@@ -272,7 +272,7 @@ const STAIRCASE = {
   // 再填回 entranceAngleTop 即可。
   entranceAngle: THREE.MathUtils.degToRad(109.7),           // 樓下入口方位角
   entranceAngleTolerance: THREE.MathUtils.degToRad(50),     // 樓下入口角度容差
-  entranceAngleTop: THREE.MathUtils.degToRad(109.7),        // 樓上入口方位角，暫時跟樓下共用同一值（詳見下方量測注意事項），待更精準量測後再調整
+  entranceAngleTop: THREE.MathUtils.degToRad(25),        // 樓上入口方位角，暫時跟樓下共用同一值（詳見下方量測注意事項），待更精準量測後再調整
   entranceAngleToleranceTop: THREE.MathUtils.degToRad(50),  // 樓上入口角度容差，可獨立調整
 };
 window.STAIRCASE = STAIRCASE; // ⚡ 新增：掛到 window，方便在 console 直接讀取/除錯（例如量測入口角度）
@@ -2345,6 +2345,21 @@ Object.assign(menuTitle.style, {
 });
 menuPanel.appendChild(menuTitle);
 
+// ── ⏳ 透視模式切換提示（三點輪流跳動）──
+const xrayTransitionOverlay = document.createElement('div');
+xrayTransitionOverlay.id = 'xray-transition-overlay';
+xrayTransitionOverlay.innerHTML = `
+  <div class="xray-transition-dots"><span></span><span></span><span></span></div>
+`;
+document.body.appendChild(xrayTransitionOverlay);
+
+function showXrayTransition() {
+  xrayTransitionOverlay.classList.add('show');
+}
+function hideXrayTransition() {
+  xrayTransitionOverlay.classList.remove('show');
+}
+
 const xrayBtn = document.createElement('button');
 xrayBtn.innerText = '開啟管路透視模式';
 Object.assign(xrayBtn.style, {
@@ -2365,7 +2380,6 @@ xrayBtn.onclick = (e) => {
   xrayBtn.style.background = isXRayMode
     ? 'rgba(0,255,255,0.5)'
     : 'rgba(0,255,255,0.2)';
-  toggleXRayMode(isXRayMode);
   menuPanel.style.display = 'none';
 
   // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
@@ -2373,10 +2387,20 @@ xrayBtn.onclick = (e) => {
   const exitBtn = document.getElementById('exit-btn');
   if (exitBtn) exitBtn.classList.remove('show');
 
-  setTimeout(() => {
-    unlockFromButton = false;
-    controls.lock();
-  }, 80);
+  // ⚡ 新增：先顯示三點動畫，用雙層 requestAnimationFrame
+  // 確保瀏覽器已經把畫面畫出來，才執行會卡頓的 toggleXRayMode()
+  showXrayTransition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      toggleXRayMode(isXRayMode);
+      hideXrayTransition();
+
+      setTimeout(() => {
+        unlockFromButton = false;
+        controls.lock();
+      }, 80);
+    });
+  });
 };
 menuPanel.appendChild(xrayBtn);
 
@@ -4235,8 +4259,8 @@ function createEndScreenAmbience(container) {
     // 只要改 middleTailConfig 或 sideTailConfig 裡的數字即可。
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
-    const middleTailConfig = { tailLen: w * 1.08, tailWidth: h * 0.9, tailOverlap: w * 0.15 };
-    const sideTailConfig   = { tailLen: w * 0.83, tailWidth: h * 0.7, tailOverlap: w * 0.05 };
+    const middleTailConfig = { tailLen: w * 0.93, tailWidth: h * 0.9, tailOverlap: w * 0.2 };
+    const sideTailConfig   = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
 
     const tailConfigs = [
       { fork: 0,          ...middleTailConfig }, // 中間直的一片
