@@ -2346,43 +2346,6 @@ Object.assign(menuTitle.style, {
 menuPanel.appendChild(menuTitle);
 
 // ── ⏳ 透視模式切換提示（三點輪流跳動）──
-const xrayTransitionStyleTag = document.createElement('style');
-xrayTransitionStyleTag.textContent = `
-  #xray-transition-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 999999;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-  }
-  #xray-transition-overlay.show {
-    display: flex;
-  }
-  .xray-transition-dots {
-    display: flex;
-    gap: 10px;
-  }
-  .xray-transition-dots span {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: #4facfe;
-    box-shadow: 0 0 10px rgba(79, 172, 254, 0.9);
-    opacity: 0.25;
-    animation: xray-dot-blink 1.2s infinite ease-in-out;
-  }
-  .xray-transition-dots span:nth-child(1) { animation-delay: 0s; }
-  .xray-transition-dots span:nth-child(2) { animation-delay: 0.2s; }
-  .xray-transition-dots span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes xray-dot-blink {
-    0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
-    40%           { opacity: 1;    transform: scale(1.15); }
-  }
-`;
-document.head.appendChild(xrayTransitionStyleTag);
-
 const xrayTransitionOverlay = document.createElement('div');
 xrayTransitionOverlay.id = 'xray-transition-overlay';
 xrayTransitionOverlay.innerHTML = `
@@ -2417,33 +2380,25 @@ xrayBtn.onclick = (e) => {
   xrayBtn.style.background = isXRayMode
     ? 'rgba(0,255,255,0.5)'
     : 'rgba(0,255,255,0.2)';
-
-  // ⚡ 按下立刻關閉選單，讓使用者感受到「一按即有反應」
   menuPanel.style.display = 'none';
 
+  // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
+  // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
   const exitBtn = document.getElementById('exit-btn');
   if (exitBtn) exitBtn.classList.remove('show');
 
-  // ⚡ 選單消失後才開始三點動畫 + 實際的模式切換
+  // ⚡ 新增：先顯示三點動畫，用雙層 requestAnimationFrame
+  // 確保瀏覽器已經把畫面畫出來，才執行會卡頓的 toggleXRayMode()
   showXrayTransition();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      const startTime = performance.now();
       toggleXRayMode(isXRayMode);
-
-      // ⚡ 保底：不管 toggleXRayMode 跑多快，三點動畫至少顯示 400ms
-      const elapsed = performance.now() - startTime;
-      const minShowTime = 400;
-      const remaining = Math.max(0, minShowTime - elapsed);
+      hideXrayTransition();
 
       setTimeout(() => {
-        hideXrayTransition();
-
-        setTimeout(() => {
-          unlockFromButton = false;
-          controls.lock();
-        }, 80);
-      }, remaining);
+        unlockFromButton = false;
+        controls.lock();
+      }, 80);
     });
   });
 };
