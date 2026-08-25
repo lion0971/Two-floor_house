@@ -2357,6 +2357,25 @@ Object.assign(xrayBtn.style, {
   fontSize: '15px',
   width: '100%',
 });
+
+// ── ⏳ 透視模式切換提示（三點輪流閃爍）──
+const xrayTransitionOverlay = document.createElement('div');
+xrayTransitionOverlay.id = 'xray-transition-overlay';
+xrayTransitionOverlay.innerHTML = `
+  <div class="xray-transition-box">
+    <div class="xray-transition-dots"><span></span><span></span><span></span></div>
+    <div class="xray-transition-label">切換中，請稍候</div>
+  </div>
+`;
+document.body.appendChild(xrayTransitionOverlay);
+
+function showXrayTransition() {
+  xrayTransitionOverlay.classList.add('show');
+}
+function hideXrayTransition() {
+  xrayTransitionOverlay.classList.remove('show');
+}
+
 xrayBtn.onclick = (e) => {
   e.stopPropagation();
   unlockFromButton = true;
@@ -2365,18 +2384,26 @@ xrayBtn.onclick = (e) => {
   xrayBtn.style.background = isXRayMode
     ? 'rgba(0,255,255,0.5)'
     : 'rgba(0,255,255,0.2)';
-  toggleXRayMode(isXRayMode);
   menuPanel.style.display = 'none';
 
-  // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
-  // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
   const exitBtn = document.getElementById('exit-btn');
   if (exitBtn) exitBtn.classList.remove('show');
 
-  setTimeout(() => {
-    unlockFromButton = false;
-    controls.lock();
-  }, 80);
+  // ⚡ 先顯示切換提示，並用兩次 requestAnimationFrame
+  // 確保瀏覽器已經把「三點動畫」畫到畫面上，
+  // 才去執行會造成卡頓的 toggleXRayMode()。
+  showXrayTransition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      toggleXRayMode(isXRayMode);
+      hideXrayTransition();
+
+      setTimeout(() => {
+        unlockFromButton = false;
+        controls.lock();
+      }, 80);
+    });
+  });
 };
 menuPanel.appendChild(xrayBtn);
 
@@ -4236,11 +4263,11 @@ function createEndScreenAmbience(container) {
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
     const middleTailConfig = { tailLen: w * 0.93, tailWidth: h * 0.9, tailOverlap: w * 0.2 };
-    const sideTailConfig   = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
+    const sideTailConfig = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
 
     const tailConfigs = [
-      { fork: 0,          ...middleTailConfig }, // 中間直的一片
-      { fork: forkAngle,  ...sideTailConfig },    // 右側
+      { fork: 0, ...middleTailConfig }, // 中間直的一片
+      { fork: forkAngle, ...sideTailConfig },    // 右側
       { fork: -forkAngle, ...sideTailConfig },    // 左側（跟右側共用同一組長寬/overlap數據）
     ];
 
