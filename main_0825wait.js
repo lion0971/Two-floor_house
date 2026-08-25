@@ -22,13 +22,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/fireba
 import { getDatabase, ref, onValue, get, set, remove, update, increment } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDjEAOsrsDNzukTyacscnc6Bt71_2HVkXg",
-  authDomain: "water-alert-system-79dfa.firebaseapp.com",
-  databaseURL: "https://water-alert-system-79dfa-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "water-alert-system-79dfa",
-};
-
 const fbApp = initializeApp(firebaseConfig);
 
 const db = getDatabase(fbApp);
@@ -2418,25 +2411,32 @@ xrayBtn.onclick = (e) => {
     ? 'rgba(0,255,255,0.5)'
     : 'rgba(0,255,255,0.2)';
 
-  // ⚡ 先顯示三點動畫（跟原本文字改變的時機點一致：選單還開著）
+  // ⚡ 按下立刻關閉選單，讓使用者感受到「一按即有反應」
+  menuPanel.style.display = 'none';
+
+  const exitBtn = document.getElementById('exit-btn');
+  if (exitBtn) exitBtn.classList.remove('show');
+
+  // ⚡ 選單消失後才開始三點動畫 + 實際的模式切換
   showXrayTransition();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
+      const startTime = performance.now();
       toggleXRayMode(isXRayMode);
-      hideXrayTransition();
 
-      // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
-      menuPanel.style.display = 'none';
-
-      // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
-      // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
-      const exitBtn = document.getElementById('exit-btn');
-      if (exitBtn) exitBtn.classList.remove('show');
+      // ⚡ 保底：不管 toggleXRayMode 跑多快，三點動畫至少顯示 400ms
+      const elapsed = performance.now() - startTime;
+      const minShowTime = 400;
+      const remaining = Math.max(0, minShowTime - elapsed);
 
       setTimeout(() => {
-        unlockFromButton = false;
-        controls.lock();
-      }, 80);
+        hideXrayTransition();
+
+        setTimeout(() => {
+          unlockFromButton = false;
+          controls.lock();
+        }, 80);
+      }, remaining);
     });
   });
 };
