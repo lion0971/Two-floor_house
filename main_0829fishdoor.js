@@ -2497,32 +2497,26 @@ xrayBtn.onclick = (e) => {
     : 'rgba(0,255,255,0.2)';
 
   // ⚡ 先顯示三點動畫（跟原本文字改變的時機點一致：選單還開著）
-  // ⚡ 修正：原本用雙重 requestAnimationFrame 等瀏覽器畫出「顯示中」那一格
-  // 畫面，但這個專案本身有自己的 animate() 主渲染迴圈也在搶 rAF 排程，
-  // 兩個雙重 rAF 很容易被瀏覽器排進同一個畫面更新週期一起執行，
-  // 中間根本沒有真正的畫面更新機會，三點動畫可能一次都沒被畫到螢幕上
-  // 就被隱藏了。改用 setTimeout 給一個固定的最短等待時間，能確保瀏覽器
-  // 一定會有真正的畫面更新機會，三點至少會被畫出來一次——即使
-  // toggleXRayMode() 本身跑得很快，使用者也能看到一下短暫的閃現，
-  // 不會像原本雙重rAF那樣完全沒被畫出來過。
   showXrayTransition();
-  setTimeout(() => {
-    toggleXRayMode(isXRayMode);
-    hideXrayTransition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      toggleXRayMode(isXRayMode);
+      hideXrayTransition();
 
-    // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
-    menuPanel.style.display = 'none';
+      // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
+      menuPanel.style.display = 'none';
 
-    // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
-    // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
-    const exitBtn = document.getElementById('exit-btn');
-    if (exitBtn) exitBtn.classList.remove('show');
+      // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
+      // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
+      const exitBtn = document.getElementById('exit-btn');
+      if (exitBtn) exitBtn.classList.remove('show');
 
-    setTimeout(() => {
-      unlockFromButton = false;
-      controls.lock();
-    }, 80);
-  }, 50);
+      setTimeout(() => {
+        unlockFromButton = false;
+        controls.lock();
+      }, 80);
+    });
+  });
 };
 menuPanel.appendChild(xrayBtn);
 
@@ -3286,40 +3280,35 @@ SWITCH_HINT_DEVICES.forEach(createSwitchHint);
 //      doorHintSeen 旗標——只要其中任何一扇門觸發過這個提示，
 //      代表玩家已經學會「按門可以開關」，其餘的門就不會再顯示，
 //      不是每個裝置各自獨立記錄「看過了沒」。
-//   2. ⚡ 沒有魚了。改成「光暈 + 文字浮現」的設計，抓的是「靠近時
-//      像神明現身說話」的氛圍：中間一團柔和的放射狀光暈，文字從
-//      模糊、縮小、透明的狀態，緩緩浮現放大、清晰、發光，像從
-//      光裡顯現出來，光暈本身則是持續、輕微的呼吸律動（infinite，
-//      但只是純CSS的opacity/scale變化，成本極低，概念上跟濾心圓環
-//      的呼吸光暈是同一招）。
+//   2. 兩條魚不是「持續朝物件啃咬」的無限迴圈動畫，而是「淡入現身→
+//      游經物件→繼續游向另一側淡出消失」的一次性連續弧線動畫（不加
+//      infinite，用 animation-fill-mode: forwards 讓牠停在消失後的
+//      最終狀態，不會反覆重播）。
 //   3. 文字「按門開關」不會自己倒數消失，會一直留著，直到玩家真的
 //      按了其中一扇門才消失；按過之後 doorHintSeen 永久設成 true，
 //      之後不管再靠近哪一扇門都不會再彈出這個提示——這是一次性的
 //      教學提示，不是每次靠近都要重複提醒的常駐UI。
-// ⚡ 效能：裝置數量少（目前2個），只有簡單的 opacity/scale/blur CSS
-// 動畫，沒有任何JS逐幀運算，比原本的魚更省。
+// ⚡ 效能：裝置數量少（目前2個）、動畫播完即停（不是持續佔用
+// compositor thread 的infinite迴圈），比開關提示的持續動畫還更省。
 // ═══════════════════════════════════════════════════════════
 
 // ⚡ 每個裝置除了名字，還帶一個 offsetX——因為不同門的物件中心（pivot）
 // 在Blender裡不一定量測得完全一致（例如door_livingroom的中心點在門軸，
 // 需要往門片中央方向修正），所以做成可以逐一調整，不是全部門共用同一個值。
 const DOOR_HINT_DEVICES = [
-  { name: 'door_livingroom', offsetX: 0.8 },
-  { name: 'kit_sliding_door', offsetX: 0 }, // ⚡ 先給0，之後看實際畫面偏移多少再調整
+  { name: 'door_livingroom', offsetX: -0.4 },
+  { name: 'kit_sliding_door', offsetX: 0 }, // ⚡ 新增：先給0，之後看實際畫面偏移多少再調整
 ];
-const DOOR_HINT_RADIUS = 3.5;              // 靠近幾公尺內彈出提示
+const DOOR_HINT_RADIUS = 2;              // 靠近幾公尺內彈出提示
 const DOOR_HINT_HEIGHT_OFFSET = 0.4;     // 相對於門本身往上偏移多少
 
 let doorHintSeen = false; // ⚡ 共用旗標：只要按過「任一扇」門，之後所有門都不再顯示提示
-const doorHintInstances = {}; // { [device]: { wrapper, root, label, cssObject, offsetX, isVisible } }
+const doorHintInstances = {}; // { [device]: { wrapper, root, fishGroup, cssObject, offsetX, isVisible } }
 const _doorHintWorldPos = new THREE.Vector3(); // 重複使用的暫存向量，避免每次判斷都 new
 
-// ⚡「神明現身」的光暈 + 文字浮現效果：
-//   .door-hint-glow：放射狀漸層光暈，持續輕微呼吸律動（infinite，但只是
-//   opacity/scale，成本極低）。
-//   .door-hint-label：文字本身，從模糊縮小透明 → 清晰放大顯現，
-//   是一次性動畫（不加infinite，配合 forwards 停在顯現後的最終狀態），
-//   每次從隱藏變顯示都會透過 triggerDoorHintAppear() 重新播放一次。
+// ⚡ 文字 + 兩條魚，魚的形狀複用開關提示同一份視覺語彙
+// （.fish-tailfin-h / .fish-body-h / .fish-head-h：尾鰭→魚身→頭部尖端），
+// 排列也複用同一套「V字型分立兩側」的版面（slot-left / slot-right）。
 const doorHintStyleTag = document.createElement('style');
 doorHintStyleTag.textContent = `
 .door-hint-root {
@@ -3329,108 +3318,125 @@ doorHintStyleTag.textContent = `
   transform: translateX(-50%);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 300ms ease-out;
+  transition: opacity 200ms ease-out;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
 }
 .door-hint-root.visible {
   opacity: 1;
 }
-.door-hint-glow {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 220px;   /* ⚡ 放大：原本140px，範圍越大數字越大 */
-  height: 220px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(circle,
-    rgba(255,255,255,0.5) 0%,
-    rgba(191,219,254,0.3) 30%,
-    rgba(147,197,253,0.12) 55%,
-    rgba(147,197,253,0) 75%);
-  pointer-events: none;
-  animation: doorHintGlowBreathe 2.6s ease-in-out infinite;
-}
-/* ⚡ 新增：黑色圓底，疊在光暈上方、文字下方，讓白色文字有足夠對比、
-   不會被場景背景吃掉。比光暈小一圈，露出外圍的光暈當作發光邊緣。 */
-@keyframes doorHintGlowBreathe {
-  0%, 100% { opacity: 0.65; transform: translate(-50%, -50%) scale(0.92); }
-  50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.08); }
-}
 .door-hint-label {
-  position: relative;
-  color: #000000;
-  font-size: 17px;
+  color: #1e3a8a;
+  font-size: 15px;
   font-weight: 700;
   white-space: nowrap;
-  text-shadow: 0 0 6px rgba(255,255,255,0.9), 0 0 14px rgba(191,219,254,0.7);
-  letter-spacing: 1px;
+  text-shadow: 0 0 3px rgba(255,255,255,0.9), 0 1px 1px rgba(255,255,255,0.6);
 }
-/* ⚡ 一次性「浮現」動畫：跟葉子的細縫展開動畫同時開始，
-   從模糊、縮小、透明開始，緩緩放大、清晰、顯現，不加infinite，
-   播完停在顯現後的最終狀態（forwards）。要重播必須由
-   triggerDoorHintAppear() 主動移除再加回 class，是標準的CSS動畫
-   重播技巧。 */
-.door-hint-label.appearing {
-  animation: doorHintLabelAppear 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+.door-hint-fish-group {
+  position: relative;
+  width: 130px;
+  height: 90px; /* ⚡ 加高：弧線動畫的位移範圍比原本的定點V字大，容器要留夠空間，overflow沒設hidden，但留夠空間比較保險 */
 }
-@keyframes doorHintLabelAppear {
-  0%   { opacity: 0; transform: scale(0.4); filter: blur(6px); }
-  60%  { opacity: 1; transform: scale(1.08); filter: blur(0px); }
-  100% { opacity: 1; transform: scale(1); filter: blur(0px); }
-}
-/* ⚡ 葉子改成「發光細縫展開」出現：一開始沿著葉子本身的斜向
-   （rotate(-20deg)，右上到左下）壓扁成一條細線，帶著明顯的發光感，
-   接著沿同一條斜線展開放大，變成完整的葉子形狀——像一道光縫裂開，
-   從中間展開出葉片。跟文字一起靠外層 .door-hint-root 的 opacity
-   切換來顯示/隱藏（見 setDoorHintVisible），一起出現、一起消失。
-   全程只動 opacity/transform/filter，GPU合成，一次性播放，播完就停
-   在完全展開的狀態（forwards），不會反覆重播（要重播由
-   triggerDoorHintAppear() 統一觸發）。 */
-.door-hint-leaf-wrap {
+/* ⚡ 定位錨點：只負責「這條魚一開始大概站在哪裡」，不放任何動畫或旋轉，
+   純粹是給下面的 .door-hint-fish-motion 一個相對定位基準點。 */
+.door-hint-fish-slot {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 52px;
-  height: 52px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
+  top: 24px;
 }
-.door-hint-leaf {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, #86efac, #16a34a);
-  border-radius: 0% 100% 0% 100%;
-  opacity: 0;
-  /* 初始狀態：沿著葉子自己的斜向（-20deg）壓扁成一條細縫，
-     scaleX 壓到接近0，展開時只需要把 scaleX 放大回1即可，
-     細縫跟展開後的葉子會是同一條斜線方向，不會歪掉。 */
-  transform: rotate(-20deg) scaleX(0.03);
-  box-shadow: 0 0 10px rgba(134,239,172,0.95), 0 0 22px rgba(22,163,74,0.7);
+.door-hint-fish-slot.slot-left {
+  left: 30px;
 }
-.door-hint-leaf-wrap.leaf-playing .door-hint-leaf {
-  animation: doorHintLeafOpen 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+.door-hint-fish-slot.slot-right {
+  right: 30px;
 }
-@keyframes doorHintLeafOpen {
-  0%   { opacity: 1; transform: rotate(-20deg) scaleX(0.03); filter: brightness(1.7); }
-  40%  { opacity: 1; transform: rotate(-20deg) scaleX(0.03); filter: brightness(1.7); } /* 細縫先停留一下再展開，讓「這是一條縫」的瞬間夠明顯 */
-  100% { opacity: 1; transform: rotate(-20deg) scaleX(1);    filter: brightness(1); }
+/* ⚡ 移動弧線層：真正的動畫掛在這一層，用 translate(x, y) 畫出弧線路徑
+   （不是只有 translateX 那種直線）。跟魚本身的固定角度（見下方
+   .door-hint-fish-h）分開處理，這一層完全不旋轉，位移量就是純粹的
+   螢幕座標位移，畫出來的弧線形狀不會被旋轉扭曲，才能對應你手繪的
+   「主要沿同一側上下移動、中間微微靠近物件」的弧線，而不是穿過
+   中心的一條直線。 */
+.door-hint-fish-motion {
+  display: flex;
+  align-items: center;
+}
+/* 左邊：0%在左下方遠處淡入 → 55%游到物件附近（原點）→ 100%繼續往左上方游遠淡出 */
+.door-hint-fish-motion.slot-left.swimming {
+  animation: doorHintSwimLeft 1.6s ease-in-out forwards;
+}
+/* 右邊：0%在右上方遠處淡入 → 55%游到物件附近（原點）→ 100%繼續往右下方游遠淡出 */
+.door-hint-fish-motion.slot-right.swimming {
+  animation: doorHintSwimRight 1.6s ease-in-out forwards;
+}
+@keyframes doorHintSwimLeft {
+  0%   { transform: translate(-6px, 34px); opacity: 0; }
+  15%  { transform: translate(-6px, 34px); opacity: 1; }
+  55%  { transform: translate(0, 0); opacity: 1; }
+  100% { transform: translate(-16px, -36px); opacity: 0; }
+}
+@keyframes doorHintSwimRight {
+  0%   { transform: translate(6px, -34px); opacity: 0; }
+  15%  { transform: translate(6px, -34px); opacity: 1; }
+  55%  { transform: translate(0, 0); opacity: 1; }
+  100% { transform: translate(16px, 36px); opacity: 0; }
+}
+/* ⚡ 魚本身角度層：原本是固定角度（40°/140°），現在改成跟著移動路徑
+   的切線方向轉動——跟上面 translate 的移動路徑用同一組時間點(0%/55%/100%)
+   對齊，兩個動畫各自獨立（一個管位置、一個管角度），但因為時間點跟總長
+   都一樣，播放起來就會同步，魚身會一直平行於行進方向，不會出現移動
+   方向跟身體朝向對不上的違和感。
+   角度是從路徑兩段線段的方向反推出來的：
+   左魚 0%→55% 方向(6,-34)≈-80°、55%→100% 方向(-16,-36)≈-114°；
+   右魚 0%→55% 方向(-6,34)≈100°、55%→100% 方向(16,36)≈66°。 */
+.door-hint-fish-h {
+  display: flex;
+  align-items: center;
+}
+.door-hint-fish-h.angle-left {
+  transform: rotate(-80deg); /* 尚未觸發動畫時的預設角度，跟動畫起始角度一致，避免一開始有跳動感 */
+}
+.door-hint-fish-h.angle-right {
+  transform: rotate(100deg);
+}
+.door-hint-fish-h.angle-left.swimming {
+  animation: doorHintAngleLeft 1.6s ease-in-out forwards;
+}
+.door-hint-fish-h.angle-right.swimming {
+  animation: doorHintAngleRight 1.6s ease-in-out forwards;
+}
+@keyframes doorHintAngleLeft {
+  0%   { transform: rotate(-80deg); }
+  55%  { transform: rotate(-80deg); }
+  100% { transform: rotate(-114deg); }
+}
+@keyframes doorHintAngleRight {
+  0%   { transform: rotate(100deg); }
+  55%  { transform: rotate(100deg); }
+  100% { transform: rotate(66deg); }
 }
 `;
 document.head.appendChild(doorHintStyleTag);
 
-// 建立葉子 DOM（單一葉形，靠 scaleX 從細縫展開成完整葉子，不再需要像素格）。
-function buildDoorHintLeaf() {
-  const wrap = document.createElement('div');
-  wrap.className = 'door-hint-leaf-wrap';
+// 建立單一「魚」的形狀，複用開關提示同一套視覺語彙（尾鰭→魚身→頭部尖端）。
+// angleClass 決定這條魚視覺上朝哪個固定角度（跟移動路徑完全分開處理）。
+function buildDoorHintFish(angleClass) {
+  const fish = document.createElement('div');
+  fish.className = `door-hint-fish-h ${angleClass}`;
 
-  const leaf = document.createElement('div');
-  leaf.className = 'door-hint-leaf';
-  wrap.appendChild(leaf);
+  const tailFin = document.createElement('div');
+  tailFin.className = 'fish-tailfin-h';
 
-  return wrap;
+  const body = document.createElement('div');
+  body.className = 'fish-body-h';
+
+  const head = document.createElement('div');
+  head.className = 'fish-head-h';
+
+  fish.appendChild(tailFin);
+  fish.appendChild(body);
+  fish.appendChild(head);
+  return fish;
 }
 
 // 建立單一裝置的門提示 DOM 結構（cssObject 要等場景 GLTF 載入完成才補上，
@@ -3442,22 +3448,37 @@ function createDoorHint(config) {
   const root = document.createElement('div');
   root.className = 'door-hint-root';
 
-  const glow = document.createElement('div');
-  glow.className = 'door-hint-glow';
-
-  const leafWrap = buildDoorHintLeaf();
-
   const label = document.createElement('div');
   label.className = 'door-hint-label';
   label.textContent = '按門開關';
 
-  root.appendChild(glow);
-  root.appendChild(leafWrap);
+  const group = document.createElement('div');
+  group.className = 'door-hint-fish-group';
+
+  // ⚡ 三層結構：slot(定位錨點，不動) → motion(弧線動畫) → fish(固定角度)
+  const slotLeft = document.createElement('div');
+  slotLeft.className = 'door-hint-fish-slot slot-left';
+  const motionLeft = document.createElement('div');
+  motionLeft.className = 'door-hint-fish-motion slot-left';
+  motionLeft.appendChild(buildDoorHintFish('angle-left'));
+  slotLeft.appendChild(motionLeft);
+
+  const slotRight = document.createElement('div');
+  slotRight.className = 'door-hint-fish-slot slot-right';
+  const motionRight = document.createElement('div');
+  motionRight.className = 'door-hint-fish-motion slot-right';
+  motionRight.appendChild(buildDoorHintFish('angle-right'));
+  slotRight.appendChild(motionRight);
+
+  group.appendChild(slotLeft);
+  group.appendChild(slotRight);
+
   root.appendChild(label);
+  root.appendChild(group);
   wrapper.appendChild(root);
 
   doorHintInstances[config.name] = {
-    wrapper, root, label, leafWrap, cssObject: null,
+    wrapper, root, fishGroup: group, cssObject: null,
     offsetX: config.offsetX || 0, isVisible: false,
   };
 }
@@ -3482,34 +3503,32 @@ function attachDoorHintsToScene() {
   });
 }
 
-// ⚡ 重新觸發指定裝置文字的「浮現」動畫：先拿掉 class 強制瀏覽器
+// ⚡ 重新觸發指定裝置兩條魚的「連續游過」動畫：先拿掉 class 強制瀏覽器
 // reflow，再重新加回去，CSS animation 才會從頭播放一次——同一個 class
 // 只在第一次加上去時會觸發動畫，之後不會自動重播，這是標準的CSS動畫
 // 重播技巧，成本是一次同步的樣式讀取（offsetWidth），可忽略。
-function triggerDoorHintAppear(device) {
+function triggerDoorHintSwim(device) {
   const hint = doorHintInstances[device];
   if (!hint) return;
-
-  // ⚡ 葉子（發光細縫展開）跟文字是兩個獨立的一次性動畫，兩者同時
-  // 開始播放，一起重新觸發才會維持同步的「重播」效果。
-  hint.leafWrap.classList.remove('leaf-playing');
-  void hint.leafWrap.offsetWidth; // 強制 reflow，讓瀏覽器認為這是「新的一次」動畫
-  hint.leafWrap.classList.add('leaf-playing');
-
-  hint.label.classList.remove('appearing');
-  void hint.label.offsetWidth;
-  hint.label.classList.add('appearing');
+  // ⚡ 移動層(位置)跟角度層(朝向)是兩個獨立的動畫，但共用同一組時間點，
+  // 兩個都要一起重播才會維持同步，不然可能出現位置動了、角度沒跟著轉。
+  const animatedEls = hint.fishGroup.querySelectorAll('.door-hint-fish-motion, .door-hint-fish-h');
+  animatedEls.forEach(el => {
+    el.classList.remove('swimming');
+    void el.offsetWidth; // 強制 reflow，讓瀏覽器認為這是「新的一次」動畫
+    el.classList.add('swimming');
+  });
 }
 
 // 顯示/隱藏指定裝置的門提示；從隱藏變顯示的那一刻（rising edge）
-// 順便重播浮現動畫
+// 順便重播游過動畫
 function setDoorHintVisible(device, visible) {
   const hint = doorHintInstances[device];
   if (!hint || hint.isVisible === visible) return;
   hint.isVisible = visible;
   hint.root.classList.toggle('visible', visible);
   if (visible) {
-    triggerDoorHintAppear(device);
+    triggerDoorHintSwim(device);
   }
 }
 
@@ -4368,6 +4387,12 @@ renderer.domElement.addEventListener('click', () => {
       anim.direction = newIsOpen ? 1 : -1;
       anim.isOpen = newIsOpen;
 
+      // ⚡ 使用者實際按過「其中一扇」有教學提示的門了：代表已經學會
+      // 怎麼開門，提示永久消失，之後不管再靠近哪一扇門都不會再彈出來。
+      if (DOOR_HINT_DEVICES.some(d => d.name === doorName)) {
+        dismissDoorHintPermanently();
+      }
+
       // ⚡ 連動門：同一組的門一起開關（例如雙開大門）
       const partners = DOOR_PARTNER_MAP[doorName] || [];
       partners.forEach(partnerName => {
@@ -4377,17 +4402,6 @@ renderer.domElement.addEventListener('click', () => {
           partnerAnim.isOpen = newIsOpen;
         }
       });
-
-      // ⚡ 修正：使用者按過「其中一扇」有教學提示的門就該永久消失，
-      // 但原本只檢查「直接點擊」的那扇門名稱（doorName），沒有把
-      // 連動門（partners，例如雙開門的另一片）也算進去——如果玩家
-      // 點的是連動門的「另一片」，door_livingroom 會透過連動一起打開，
-      // 但提示卻沒消失，因為 doorName 對不上。改成 doorName 本身
-      // 或任何一個連動夥伴，只要有一個落在 DOOR_HINT_DEVICES 裡就算數。
-      const namesAffected = [doorName, ...partners];
-      if (DOOR_HINT_DEVICES.some(d => namesAffected.includes(d.name))) {
-        dismissDoorHintPermanently();
-      }
     }
     return;
   }

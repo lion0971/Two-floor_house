@@ -2497,32 +2497,26 @@ xrayBtn.onclick = (e) => {
     : 'rgba(0,255,255,0.2)';
 
   // ⚡ 先顯示三點動畫（跟原本文字改變的時機點一致：選單還開著）
-  // ⚡ 修正：原本用雙重 requestAnimationFrame 等瀏覽器畫出「顯示中」那一格
-  // 畫面，但這個專案本身有自己的 animate() 主渲染迴圈也在搶 rAF 排程，
-  // 兩個雙重 rAF 很容易被瀏覽器排進同一個畫面更新週期一起執行，
-  // 中間根本沒有真正的畫面更新機會，三點動畫可能一次都沒被畫到螢幕上
-  // 就被隱藏了。改用 setTimeout 給一個固定的最短等待時間，能確保瀏覽器
-  // 一定會有真正的畫面更新機會，三點至少會被畫出來一次——即使
-  // toggleXRayMode() 本身跑得很快，使用者也能看到一下短暫的閃現，
-  // 不會像原本雙重rAF那樣完全沒被畫出來過。
   showXrayTransition();
-  setTimeout(() => {
-    toggleXRayMode(isXRayMode);
-    hideXrayTransition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      toggleXRayMode(isXRayMode);
+      hideXrayTransition();
 
-    // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
-    menuPanel.style.display = 'none';
+      // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
+      menuPanel.style.display = 'none';
 
-    // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
-    // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
-    const exitBtn = document.getElementById('exit-btn');
-    if (exitBtn) exitBtn.classList.remove('show');
+      // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
+      // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
+      const exitBtn = document.getElementById('exit-btn');
+      if (exitBtn) exitBtn.classList.remove('show');
 
-    setTimeout(() => {
-      unlockFromButton = false;
-      controls.lock();
-    }, 80);
-  }, 50);
+      setTimeout(() => {
+        unlockFromButton = false;
+        controls.lock();
+      }, 80);
+    });
+  });
 };
 menuPanel.appendChild(xrayBtn);
 
@@ -3368,70 +3362,20 @@ doorHintStyleTag.textContent = `
   text-shadow: 0 0 6px rgba(255,255,255,0.9), 0 0 14px rgba(191,219,254,0.7);
   letter-spacing: 1px;
 }
-/* ⚡ 一次性「浮現」動畫：跟葉子的細縫展開動畫同時開始，
-   從模糊、縮小、透明開始，緩緩放大、清晰、顯現，不加infinite，
-   播完停在顯現後的最終狀態（forwards）。要重播必須由
-   triggerDoorHintAppear() 主動移除再加回 class，是標準的CSS動畫
-   重播技巧。 */
+/* ⚡ 一次性「浮現」動畫：從模糊、縮小、透明開始，緩緩放大、清晰、
+   顯現，像從光暈裡顯現出來，不加infinite，播完停在顯現後的最終狀態
+   （forwards）。要重播必須由 triggerDoorHintAppear() 主動移除再加回
+   class，是標準的CSS動畫重播技巧。 */
 .door-hint-label.appearing {
-  animation: doorHintLabelAppear 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: doorHintLabelAppear 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 @keyframes doorHintLabelAppear {
   0%   { opacity: 0; transform: scale(0.4); filter: blur(6px); }
   60%  { opacity: 1; transform: scale(1.08); filter: blur(0px); }
   100% { opacity: 1; transform: scale(1); filter: blur(0px); }
 }
-/* ⚡ 葉子改成「發光細縫展開」出現：一開始沿著葉子本身的斜向
-   （rotate(-20deg)，右上到左下）壓扁成一條細線，帶著明顯的發光感，
-   接著沿同一條斜線展開放大，變成完整的葉子形狀——像一道光縫裂開，
-   從中間展開出葉片。跟文字一起靠外層 .door-hint-root 的 opacity
-   切換來顯示/隱藏（見 setDoorHintVisible），一起出現、一起消失。
-   全程只動 opacity/transform/filter，GPU合成，一次性播放，播完就停
-   在完全展開的狀態（forwards），不會反覆重播（要重播由
-   triggerDoorHintAppear() 統一觸發）。 */
-.door-hint-leaf-wrap {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 52px;
-  height: 52px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-.door-hint-leaf {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, #86efac, #16a34a);
-  border-radius: 0% 100% 0% 100%;
-  opacity: 0;
-  /* 初始狀態：沿著葉子自己的斜向（-20deg）壓扁成一條細縫，
-     scaleX 壓到接近0，展開時只需要把 scaleX 放大回1即可，
-     細縫跟展開後的葉子會是同一條斜線方向，不會歪掉。 */
-  transform: rotate(-20deg) scaleX(0.03);
-  box-shadow: 0 0 10px rgba(134,239,172,0.95), 0 0 22px rgba(22,163,74,0.7);
-}
-.door-hint-leaf-wrap.leaf-playing .door-hint-leaf {
-  animation: doorHintLeafOpen 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-@keyframes doorHintLeafOpen {
-  0%   { opacity: 1; transform: rotate(-20deg) scaleX(0.03); filter: brightness(1.7); }
-  40%  { opacity: 1; transform: rotate(-20deg) scaleX(0.03); filter: brightness(1.7); } /* 細縫先停留一下再展開，讓「這是一條縫」的瞬間夠明顯 */
-  100% { opacity: 1; transform: rotate(-20deg) scaleX(1);    filter: brightness(1); }
-}
 `;
 document.head.appendChild(doorHintStyleTag);
-
-// 建立葉子 DOM（單一葉形，靠 scaleX 從細縫展開成完整葉子，不再需要像素格）。
-function buildDoorHintLeaf() {
-  const wrap = document.createElement('div');
-  wrap.className = 'door-hint-leaf-wrap';
-
-  const leaf = document.createElement('div');
-  leaf.className = 'door-hint-leaf';
-  wrap.appendChild(leaf);
-
-  return wrap;
-}
 
 // 建立單一裝置的門提示 DOM 結構（cssObject 要等場景 GLTF 載入完成才補上，
 // 見 attachDoorHintsToScene）。跟開關提示一樣，用陣列 forEach 建立多個實體，
@@ -3445,19 +3389,16 @@ function createDoorHint(config) {
   const glow = document.createElement('div');
   glow.className = 'door-hint-glow';
 
-  const leafWrap = buildDoorHintLeaf();
-
   const label = document.createElement('div');
   label.className = 'door-hint-label';
   label.textContent = '按門開關';
 
   root.appendChild(glow);
-  root.appendChild(leafWrap);
   root.appendChild(label);
   wrapper.appendChild(root);
 
   doorHintInstances[config.name] = {
-    wrapper, root, label, leafWrap, cssObject: null,
+    wrapper, root, label, cssObject: null,
     offsetX: config.offsetX || 0, isVisible: false,
   };
 }
@@ -3489,15 +3430,8 @@ function attachDoorHintsToScene() {
 function triggerDoorHintAppear(device) {
   const hint = doorHintInstances[device];
   if (!hint) return;
-
-  // ⚡ 葉子（發光細縫展開）跟文字是兩個獨立的一次性動畫，兩者同時
-  // 開始播放，一起重新觸發才會維持同步的「重播」效果。
-  hint.leafWrap.classList.remove('leaf-playing');
-  void hint.leafWrap.offsetWidth; // 強制 reflow，讓瀏覽器認為這是「新的一次」動畫
-  hint.leafWrap.classList.add('leaf-playing');
-
   hint.label.classList.remove('appearing');
-  void hint.label.offsetWidth;
+  void hint.label.offsetWidth; // 強制 reflow，讓瀏覽器認為這是「新的一次」動畫
   hint.label.classList.add('appearing');
 }
 
@@ -4368,6 +4302,12 @@ renderer.domElement.addEventListener('click', () => {
       anim.direction = newIsOpen ? 1 : -1;
       anim.isOpen = newIsOpen;
 
+      // ⚡ 使用者實際按過「其中一扇」有教學提示的門了：代表已經學會
+      // 怎麼開門，提示永久消失，之後不管再靠近哪一扇門都不會再彈出來。
+      if (DOOR_HINT_DEVICES.some(d => d.name === doorName)) {
+        dismissDoorHintPermanently();
+      }
+
       // ⚡ 連動門：同一組的門一起開關（例如雙開大門）
       const partners = DOOR_PARTNER_MAP[doorName] || [];
       partners.forEach(partnerName => {
@@ -4377,17 +4317,6 @@ renderer.domElement.addEventListener('click', () => {
           partnerAnim.isOpen = newIsOpen;
         }
       });
-
-      // ⚡ 修正：使用者按過「其中一扇」有教學提示的門就該永久消失，
-      // 但原本只檢查「直接點擊」的那扇門名稱（doorName），沒有把
-      // 連動門（partners，例如雙開門的另一片）也算進去——如果玩家
-      // 點的是連動門的「另一片」，door_livingroom 會透過連動一起打開，
-      // 但提示卻沒消失，因為 doorName 對不上。改成 doorName 本身
-      // 或任何一個連動夥伴，只要有一個落在 DOOR_HINT_DEVICES 裡就算數。
-      const namesAffected = [doorName, ...partners];
-      if (DOOR_HINT_DEVICES.some(d => namesAffected.includes(d.name))) {
-        dismissDoorHintPermanently();
-      }
     }
     return;
   }

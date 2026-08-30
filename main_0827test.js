@@ -291,38 +291,6 @@ function getStairEntranceConfig(cameraY) {
 let isOnStairRail = false;  // 是否正處於「樓梯軌道自走模式」
 let stairHeight = 0;        // 目前在樓梯上的高度（0 ~ totalHeight）
 let stairAngleOffset = 0;   // 進入樓梯當下的角度基準，讓軌道跟實際入口方位對齊
-let stairEntryHeight = 0;   // ⚡ 新增：本次是從哪一端進入的（0=樓下，totalHeight=樓上），
-                             // 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
-
-// ⚡ 修正「爬到樓梯另一端時，出口跟真正入口方位角對不上」的問題：
-// 理論上 turns 圈數應該讓終點剛好落在另一端真正的入口角度上，但實際
-// 3D模型的樓上/樓下開口是各自獨立建模的，跟 turns*360° 算出來的理論
-// 角度會有落差（目前實測落差約 109.7°-25°=84.7°），導致爬到底時人
-// 卡在原地，要偏一段角度才能真的走出欄杆開口。
-// 解法：不直接用 turns 算出的「理論角度」當終點，而是依爬行進度
-// （0=剛進入，1=走到底）線性地把角度從「理論值」修正到「另一端真正
-// 的入口角度」——起點完全不變（不會有感的跳動），終點精準對齊真實
-// 開口，跟 turns 值準不準完全無關，也不用重新量測、調整 turns。
-function getStairAngleAtHeight(height) {
-  const rawAngle = stairAngleOffset - (height / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
-
-  // 這趟是從樓下(0)爬向樓上(totalHeight)，還是反過來？
-  const enteredFromBottom = stairEntryHeight <= STAIRCASE.totalHeight / 2;
-  const farHeight = enteredFromBottom ? STAIRCASE.totalHeight : 0;
-  const farTargetAngle = enteredFromBottom ? STAIRCASE.entranceAngleTop : STAIRCASE.entranceAngle;
-
-  // 理論公式在「終點」算出來的角度
-  const rawFarAngle = stairAngleOffset - (farHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
-
-  // 終點需要修正多少角度，取最短路徑（避免繞一大圈跳動）
-  const rawDelta = farTargetAngle - rawFarAngle;
-  const delta = Math.atan2(Math.sin(rawDelta), Math.cos(rawDelta)); // 正規化到 -π ~ π
-
-  // 目前爬行進度：0=剛進入，1=走到底端
-  const progress = Math.min(1, Math.abs(height - stairEntryHeight) / STAIRCASE.totalHeight);
-
-  return rawAngle + delta * progress;
-}
 // ⚡ 新增：是否已經「真正踏上」樓梯（離開過入口那個邊界一小段距離），
 // 用來區分「剛從入口走進來，還在往中心走」跟「已經爬過一段、現在回到
 // 邊界想離開」這兩種情況——只有後者才套用下面寬鬆的90度離開容差，
@@ -1359,7 +1327,6 @@ function updateStaircase(delta) {
       stairHeight = (camera.position.y > STAIRCASE.center.y + STAIRCASE.totalHeight / 2)
         ? STAIRCASE.totalHeight
         : 0;
-      stairEntryHeight = stairHeight; // ⚡ 記錄這次是從哪一端進入，供 getStairAngleAtHeight() 判斷修正方向
       // 反向旋转公式：角度 = offset - 比例*2π*turns
       stairAngleOffset = entryAngle + (stairHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
     }
@@ -1391,7 +1358,7 @@ function updateStaircase(delta) {
     worldDir.y = 0; // 理論上必為0，保留只是保險
     worldDir.normalize();
 
-    const angleNow = getStairAngleAtHeight(stairHeight); // ⚡ 改用有終點修正的版本，避免離開判斷用到錯誤的理論角度
+    const angleNow = stairAngleOffset - (stairHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
     const tangentUp = new THREE.Vector3(Math.sin(angleNow), 0, -Math.cos(angleNow));
 
     inputDir = worldDir.dot(tangentUp);
@@ -1441,7 +1408,7 @@ function updateStaircase(delta) {
   }
   stairHeight = Math.max(0, Math.min(STAIRCASE.totalHeight, stairHeight));
 
-  const angle = getStairAngleAtHeight(stairHeight); // ⚡ 改用有終點修正的版本，爬到底時會精準對齊另一端真正的入口角度
+  const angle = stairAngleOffset - (stairHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
   camera.position.x = STAIRCASE.center.x + Math.cos(angle) * STAIRCASE.walkRadius;
   camera.position.z = STAIRCASE.center.z + Math.sin(angle) * STAIRCASE.walkRadius;
 
@@ -2356,10 +2323,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
   // ✅ 把開關靠近提示（魚形）也掛到對應裝置上，原因跟上面濾心卡片一樣：
   // 一定要等 interactiveDevices 填好之後才能找到掛載點。
   attachSwitchHintsToScene();
-
-  // ✅ 把客廳門靠近提示也掛上去，原因相同：一定要等 doorAnimations
-  // 填好之後才能找到對應的 mesh。
-  attachDoorHintsToScene();
 });
 
 // ── 太陽平行光（右前方斜上 45°）──
@@ -2497,32 +2460,26 @@ xrayBtn.onclick = (e) => {
     : 'rgba(0,255,255,0.2)';
 
   // ⚡ 先顯示三點動畫（跟原本文字改變的時機點一致：選單還開著）
-  // ⚡ 修正：原本用雙重 requestAnimationFrame 等瀏覽器畫出「顯示中」那一格
-  // 畫面，但這個專案本身有自己的 animate() 主渲染迴圈也在搶 rAF 排程，
-  // 兩個雙重 rAF 很容易被瀏覽器排進同一個畫面更新週期一起執行，
-  // 中間根本沒有真正的畫面更新機會，三點動畫可能一次都沒被畫到螢幕上
-  // 就被隱藏了。改用 setTimeout 給一個固定的最短等待時間，能確保瀏覽器
-  // 一定會有真正的畫面更新機會，三點至少會被畫出來一次——即使
-  // toggleXRayMode() 本身跑得很快，使用者也能看到一下短暫的閃現，
-  // 不會像原本雙重rAF那樣完全沒被畫出來過。
   showXrayTransition();
-  setTimeout(() => {
-    toggleXRayMode(isXRayMode);
-    hideXrayTransition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      toggleXRayMode(isXRayMode);
+      hideXrayTransition();
 
-    // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
-    menuPanel.style.display = 'none';
+      // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
+      menuPanel.style.display = 'none';
 
-    // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
-    // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
-    const exitBtn = document.getElementById('exit-btn');
-    if (exitBtn) exitBtn.classList.remove('show');
+      // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
+      // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
+      const exitBtn = document.getElementById('exit-btn');
+      if (exitBtn) exitBtn.classList.remove('show');
 
-    setTimeout(() => {
-      unlockFromButton = false;
-      controls.lock();
-    }, 80);
-  }, 50);
+      setTimeout(() => {
+        unlockFromButton = false;
+        controls.lock();
+      }, 80);
+    });
+  });
 };
 menuPanel.appendChild(xrayBtn);
 
@@ -3278,263 +3235,6 @@ function createSwitchHint(device) {
   switchHintCards[device] = { wrapper, root, cssObject: null, isVisible: false, dismissedUntilLeave: false };
 }
 SWITCH_HINT_DEVICES.forEach(createSwitchHint);
-
-// ═══════════════════════════════════════════════════════════
-// ── 門靠近提示：距離指定的門2公尺內彈出「按門開關」──
-// 跟上面開關的魚形提示（SWITCH_HINT_*）是完全獨立的系統，差異點：
-//   1. 支援多個裝置（DOOR_HINT_DEVICES 陣列），但全部共用同一個
-//      doorHintSeen 旗標——只要其中任何一扇門觸發過這個提示，
-//      代表玩家已經學會「按門可以開關」，其餘的門就不會再顯示，
-//      不是每個裝置各自獨立記錄「看過了沒」。
-//   2. ⚡ 沒有魚了。改成「光暈 + 文字浮現」的設計，抓的是「靠近時
-//      像神明現身說話」的氛圍：中間一團柔和的放射狀光暈，文字從
-//      模糊、縮小、透明的狀態，緩緩浮現放大、清晰、發光，像從
-//      光裡顯現出來，光暈本身則是持續、輕微的呼吸律動（infinite，
-//      但只是純CSS的opacity/scale變化，成本極低，概念上跟濾心圓環
-//      的呼吸光暈是同一招）。
-//   3. 文字「按門開關」不會自己倒數消失，會一直留著，直到玩家真的
-//      按了其中一扇門才消失；按過之後 doorHintSeen 永久設成 true，
-//      之後不管再靠近哪一扇門都不會再彈出這個提示——這是一次性的
-//      教學提示，不是每次靠近都要重複提醒的常駐UI。
-// ⚡ 效能：裝置數量少（目前2個），只有簡單的 opacity/scale/blur CSS
-// 動畫，沒有任何JS逐幀運算，比原本的魚更省。
-// ═══════════════════════════════════════════════════════════
-
-// ⚡ 每個裝置除了名字，還帶一個 offsetX——因為不同門的物件中心（pivot）
-// 在Blender裡不一定量測得完全一致（例如door_livingroom的中心點在門軸，
-// 需要往門片中央方向修正），所以做成可以逐一調整，不是全部門共用同一個值。
-const DOOR_HINT_DEVICES = [
-  { name: 'door_livingroom', offsetX: 0.8 },
-  { name: 'kit_sliding_door', offsetX: 0 }, // ⚡ 先給0，之後看實際畫面偏移多少再調整
-];
-const DOOR_HINT_RADIUS = 3.5;              // 靠近幾公尺內彈出提示
-const DOOR_HINT_HEIGHT_OFFSET = 0.4;     // 相對於門本身往上偏移多少
-
-let doorHintSeen = false; // ⚡ 共用旗標：只要按過「任一扇」門，之後所有門都不再顯示提示
-const doorHintInstances = {}; // { [device]: { wrapper, root, label, cssObject, offsetX, isVisible } }
-const _doorHintWorldPos = new THREE.Vector3(); // 重複使用的暫存向量，避免每次判斷都 new
-
-// ⚡「神明現身」的光暈 + 文字浮現效果：
-//   .door-hint-glow：放射狀漸層光暈，持續輕微呼吸律動（infinite，但只是
-//   opacity/scale，成本極低）。
-//   .door-hint-label：文字本身，從模糊縮小透明 → 清晰放大顯現，
-//   是一次性動畫（不加infinite，配合 forwards 停在顯現後的最終狀態），
-//   每次從隱藏變顯示都會透過 triggerDoorHintAppear() 重新播放一次。
-const doorHintStyleTag = document.createElement('style');
-doorHintStyleTag.textContent = `
-.door-hint-root {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 300ms ease-out;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.door-hint-root.visible {
-  opacity: 1;
-}
-.door-hint-glow {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 220px;   /* ⚡ 放大：原本140px，範圍越大數字越大 */
-  height: 220px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(circle,
-    rgba(255,255,255,0.5) 0%,
-    rgba(191,219,254,0.3) 30%,
-    rgba(147,197,253,0.12) 55%,
-    rgba(147,197,253,0) 75%);
-  pointer-events: none;
-  animation: doorHintGlowBreathe 2.6s ease-in-out infinite;
-}
-/* ⚡ 新增：黑色圓底，疊在光暈上方、文字下方，讓白色文字有足夠對比、
-   不會被場景背景吃掉。比光暈小一圈，露出外圍的光暈當作發光邊緣。 */
-@keyframes doorHintGlowBreathe {
-  0%, 100% { opacity: 0.65; transform: translate(-50%, -50%) scale(0.92); }
-  50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.08); }
-}
-.door-hint-label {
-  position: relative;
-  color: #000000;
-  font-size: 17px;
-  font-weight: 700;
-  white-space: nowrap;
-  text-shadow: 0 0 6px rgba(255,255,255,0.9), 0 0 14px rgba(191,219,254,0.7);
-  letter-spacing: 1px;
-}
-/* ⚡ 一次性「浮現」動畫：跟葉子的細縫展開動畫同時開始，
-   從模糊、縮小、透明開始，緩緩放大、清晰、顯現，不加infinite，
-   播完停在顯現後的最終狀態（forwards）。要重播必須由
-   triggerDoorHintAppear() 主動移除再加回 class，是標準的CSS動畫
-   重播技巧。 */
-.door-hint-label.appearing {
-  animation: doorHintLabelAppear 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes doorHintLabelAppear {
-  0%   { opacity: 0; transform: scale(0.4); filter: blur(6px); }
-  60%  { opacity: 1; transform: scale(1.08); filter: blur(0px); }
-  100% { opacity: 1; transform: scale(1); filter: blur(0px); }
-}
-/* ⚡ 葉子改成「發光細縫展開」出現：一開始沿著葉子本身的斜向
-   （rotate(-20deg)，右上到左下）壓扁成一條細線，帶著明顯的發光感，
-   接著沿同一條斜線展開放大，變成完整的葉子形狀——像一道光縫裂開，
-   從中間展開出葉片。跟文字一起靠外層 .door-hint-root 的 opacity
-   切換來顯示/隱藏（見 setDoorHintVisible），一起出現、一起消失。
-   全程只動 opacity/transform/filter，GPU合成，一次性播放，播完就停
-   在完全展開的狀態（forwards），不會反覆重播（要重播由
-   triggerDoorHintAppear() 統一觸發）。 */
-.door-hint-leaf-wrap {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 52px;
-  height: 52px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-.door-hint-leaf {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, #86efac, #16a34a);
-  border-radius: 0% 100% 0% 100%;
-  opacity: 0;
-  /* 初始狀態：沿著葉子自己的斜向（-20deg）壓扁成一條細縫，
-     scaleX 壓到接近0，展開時只需要把 scaleX 放大回1即可，
-     細縫跟展開後的葉子會是同一條斜線方向，不會歪掉。 */
-  transform: rotate(-20deg) scaleX(0.03);
-  box-shadow: 0 0 10px rgba(134,239,172,0.95), 0 0 22px rgba(22,163,74,0.7);
-}
-.door-hint-leaf-wrap.leaf-playing .door-hint-leaf {
-  animation: doorHintLeafOpen 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-@keyframes doorHintLeafOpen {
-  0%   { opacity: 1; transform: rotate(-20deg) scaleX(0.03); filter: brightness(1.7); }
-  40%  { opacity: 1; transform: rotate(-20deg) scaleX(0.03); filter: brightness(1.7); } /* 細縫先停留一下再展開，讓「這是一條縫」的瞬間夠明顯 */
-  100% { opacity: 1; transform: rotate(-20deg) scaleX(1);    filter: brightness(1); }
-}
-`;
-document.head.appendChild(doorHintStyleTag);
-
-// 建立葉子 DOM（單一葉形，靠 scaleX 從細縫展開成完整葉子，不再需要像素格）。
-function buildDoorHintLeaf() {
-  const wrap = document.createElement('div');
-  wrap.className = 'door-hint-leaf-wrap';
-
-  const leaf = document.createElement('div');
-  leaf.className = 'door-hint-leaf';
-  wrap.appendChild(leaf);
-
-  return wrap;
-}
-
-// 建立單一裝置的門提示 DOM 結構（cssObject 要等場景 GLTF 載入完成才補上，
-// 見 attachDoorHintsToScene）。跟開關提示一樣，用陣列 forEach 建立多個實體，
-// 但共用的是同一個全域 doorHintSeen 旗標，不是各自獨立判斷。
-function createDoorHint(config) {
-  const wrapper = document.createElement('div'); // 交給 CSS2DObject 自己管定位，跟開關提示同樣的理由
-
-  const root = document.createElement('div');
-  root.className = 'door-hint-root';
-
-  const glow = document.createElement('div');
-  glow.className = 'door-hint-glow';
-
-  const leafWrap = buildDoorHintLeaf();
-
-  const label = document.createElement('div');
-  label.className = 'door-hint-label';
-  label.textContent = '按門開關';
-
-  root.appendChild(glow);
-  root.appendChild(leafWrap);
-  root.appendChild(label);
-  wrapper.appendChild(root);
-
-  doorHintInstances[config.name] = {
-    wrapper, root, label, leafWrap, cssObject: null,
-    offsetX: config.offsetX || 0, isVisible: false,
-  };
-}
-DOOR_HINT_DEVICES.forEach(createDoorHint);
-
-// 把每個門提示掛到3D場景裡：跟濾心卡片/開關提示同一套做法，掛在門 mesh
-// 本身上，一定要等 GLTF 模型載入完成、doorAnimations 都填好之後才能呼叫。
-function attachDoorHintsToScene() {
-  DOOR_HINT_DEVICES.forEach(({ name }) => {
-    const hint = doorHintInstances[name];
-    if (!hint || hint.cssObject) return; // 已經掛過了
-
-    const anim = doorAnimations[name];
-    if (!anim || !anim.mesh) {
-      console.warn(`[DoorHint] 找不到 ${name} 對應的3D物件，門提示無法定位`);
-      return;
-    }
-    const cssObject = new CSS2DObject(hint.wrapper);
-    cssObject.position.set(hint.offsetX, DOOR_HINT_HEIGHT_OFFSET, 0);
-    anim.mesh.add(cssObject);
-    hint.cssObject = cssObject;
-  });
-}
-
-// ⚡ 重新觸發指定裝置文字的「浮現」動畫：先拿掉 class 強制瀏覽器
-// reflow，再重新加回去，CSS animation 才會從頭播放一次——同一個 class
-// 只在第一次加上去時會觸發動畫，之後不會自動重播，這是標準的CSS動畫
-// 重播技巧，成本是一次同步的樣式讀取（offsetWidth），可忽略。
-function triggerDoorHintAppear(device) {
-  const hint = doorHintInstances[device];
-  if (!hint) return;
-
-  // ⚡ 葉子（發光細縫展開）跟文字是兩個獨立的一次性動畫，兩者同時
-  // 開始播放，一起重新觸發才會維持同步的「重播」效果。
-  hint.leafWrap.classList.remove('leaf-playing');
-  void hint.leafWrap.offsetWidth; // 強制 reflow，讓瀏覽器認為這是「新的一次」動畫
-  hint.leafWrap.classList.add('leaf-playing');
-
-  hint.label.classList.remove('appearing');
-  void hint.label.offsetWidth;
-  hint.label.classList.add('appearing');
-}
-
-// 顯示/隱藏指定裝置的門提示；從隱藏變顯示的那一刻（rising edge）
-// 順便重播浮現動畫
-function setDoorHintVisible(device, visible) {
-  const hint = doorHintInstances[device];
-  if (!hint || hint.isVisible === visible) return;
-  hint.isVisible = visible;
-  hint.root.classList.toggle('visible', visible);
-  if (visible) {
-    triggerDoorHintAppear(device);
-  }
-}
-
-// ⚡ 使用者按下「任一扇」門時呼叫：doorHintSeen 永久設成 true，
-// 所有門提示立刻一起隱藏，之後不管再靠近哪一扇門都不會再顯示——
-// 這是共用的教學型一次性提示，跟開關提示「離開範圍後下次靠近還會
-// 再彈出」的行為刻意不同。
-function dismissDoorHintPermanently() {
-  doorHintSeen = true;
-  DOOR_HINT_DEVICES.forEach(({ name }) => setDoorHintVisible(name, false));
-}
-
-// ⚡ 距離判斷：裝置數量少，每幀對每個裝置算一次「兩點距離」成本可忽略，
-// 不需要像開關提示那樣特別節流。doorHintSeen 一旦是 true 就整個跳過，
-// 連距離計算都省了。
-function updateDoorHintsVisibility() {
-  if (doorHintSeen) return;
-  DOOR_HINT_DEVICES.forEach(({ name }) => {
-    const hint = doorHintInstances[name];
-    if (!hint || !hint.cssObject) return;
-    hint.cssObject.getWorldPosition(_doorHintWorldPos);
-    const dist = camera.position.distanceTo(_doorHintWorldPos);
-    setDoorHintVisible(name, dist <= DOOR_HINT_RADIUS);
-  });
-}
 
 
 // ⚡ 把魚形提示掛到3D場景裡：跟濾心卡片（attachFilterCardsToScene）同一套做法，
@@ -4377,17 +4077,6 @@ renderer.domElement.addEventListener('click', () => {
           partnerAnim.isOpen = newIsOpen;
         }
       });
-
-      // ⚡ 修正：使用者按過「其中一扇」有教學提示的門就該永久消失，
-      // 但原本只檢查「直接點擊」的那扇門名稱（doorName），沒有把
-      // 連動門（partners，例如雙開門的另一片）也算進去——如果玩家
-      // 點的是連動門的「另一片」，door_livingroom 會透過連動一起打開，
-      // 但提示卻沒消失，因為 doorName 對不上。改成 doorName 本身
-      // 或任何一個連動夥伴，只要有一個落在 DOOR_HINT_DEVICES 裡就算數。
-      const namesAffected = [doorName, ...partners];
-      if (DOOR_HINT_DEVICES.some(d => namesAffected.includes(d.name))) {
-        dismissDoorHintPermanently();
-      }
     }
     return;
   }
@@ -4647,10 +4336,6 @@ function animate(nowMs) {
     switchHintCheckElapsed = 0;
     updateSwitchHintVisibility();
   }
-
-  // ⚡ 客廳門靠近提示：裝置數量少，每幀直接算一次距離即可，
-  // 不需要額外的節流變數，詳見 updateDoorHintsVisibility() 上方的效能說明。
-  updateDoorHintsVisibility();
 
   // 移動
   if (controls.isLocked) {

@@ -2497,32 +2497,26 @@ xrayBtn.onclick = (e) => {
     : 'rgba(0,255,255,0.2)';
 
   // ⚡ 先顯示三點動畫（跟原本文字改變的時機點一致：選單還開著）
-  // ⚡ 修正：原本用雙重 requestAnimationFrame 等瀏覽器畫出「顯示中」那一格
-  // 畫面，但這個專案本身有自己的 animate() 主渲染迴圈也在搶 rAF 排程，
-  // 兩個雙重 rAF 很容易被瀏覽器排進同一個畫面更新週期一起執行，
-  // 中間根本沒有真正的畫面更新機會，三點動畫可能一次都沒被畫到螢幕上
-  // 就被隱藏了。改用 setTimeout 給一個固定的最短等待時間，能確保瀏覽器
-  // 一定會有真正的畫面更新機會，三點至少會被畫出來一次——即使
-  // toggleXRayMode() 本身跑得很快，使用者也能看到一下短暫的閃現，
-  // 不會像原本雙重rAF那樣完全沒被畫出來過。
   showXrayTransition();
-  setTimeout(() => {
-    toggleXRayMode(isXRayMode);
-    hideXrayTransition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      toggleXRayMode(isXRayMode);
+      hideXrayTransition();
 
-    // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
-    menuPanel.style.display = 'none';
+      // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
+      menuPanel.style.display = 'none';
 
-    // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
-    // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
-    const exitBtn = document.getElementById('exit-btn');
-    if (exitBtn) exitBtn.classList.remove('show');
+      // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
+      // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
+      const exitBtn = document.getElementById('exit-btn');
+      if (exitBtn) exitBtn.classList.remove('show');
 
-    setTimeout(() => {
-      unlockFromButton = false;
-      controls.lock();
-    }, 80);
-  }, 50);
+      setTimeout(() => {
+        unlockFromButton = false;
+        controls.lock();
+      }, 80);
+    });
+  });
 };
 menuPanel.appendChild(xrayBtn);
 

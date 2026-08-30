@@ -22,13 +22,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/fireba
 import { getDatabase, ref, onValue, get, set, remove, update, increment } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDjEAOsrsDNzukTyacscnc6Bt71_2HVkXg",
-  authDomain: "water-alert-system-79dfa.firebaseapp.com",
-  databaseURL: "https://water-alert-system-79dfa-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "water-alert-system-79dfa",
-};
-
 const fbApp = initializeApp(firebaseConfig);
 
 const db = getDatabase(fbApp);
@@ -291,43 +284,6 @@ function getStairEntranceConfig(cameraY) {
 let isOnStairRail = false;  // 是否正處於「樓梯軌道自走模式」
 let stairHeight = 0;        // 目前在樓梯上的高度（0 ~ totalHeight）
 let stairAngleOffset = 0;   // 進入樓梯當下的角度基準，讓軌道跟實際入口方位對齊
-let stairEntryHeight = 0;   // ⚡ 新增：本次是從哪一端進入的（0=樓下，totalHeight=樓上），
-                             // 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
-
-// ⚡ 修正「爬到樓梯另一端時，出口跟真正入口方位角對不上」的問題：
-// 理論上 turns 圈數應該讓終點剛好落在另一端真正的入口角度上，但實際
-// 3D模型的樓上/樓下開口是各自獨立建模的，跟 turns*360° 算出來的理論
-// 角度會有落差（目前實測落差約 109.7°-25°=84.7°），導致爬到底時人
-// 卡在原地，要偏一段角度才能真的走出欄杆開口。
-// 解法：不直接用 turns 算出的「理論角度」當終點，而是依爬行進度
-// （0=剛進入，1=走到底）線性地把角度從「理論值」修正到「另一端真正
-// 的入口角度」——起點完全不變（不會有感的跳動），終點精準對齊真實
-// 開口，跟 turns 值準不準完全無關，也不用重新量測、調整 turns。
-function getStairAngleAtHeight(height) {
-  const rawAngle = stairAngleOffset - (height / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
-
-  // 這趟是從樓下(0)爬向樓上(totalHeight)，還是反過來？
-  const enteredFromBottom = stairEntryHeight <= STAIRCASE.totalHeight / 2;
-  const farHeight = enteredFromBottom ? STAIRCASE.totalHeight : 0;
-  const farTargetAngle = enteredFromBottom ? STAIRCASE.entranceAngleTop : STAIRCASE.entranceAngle;
-
-  // 理論公式在「終點」算出來的角度
-  const rawFarAngle = stairAngleOffset - (farHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
-
-  // 終點需要修正多少角度，取最短路徑（避免繞一大圈跳動）
-  const rawDelta = farTargetAngle - rawFarAngle;
-  const delta = Math.atan2(Math.sin(rawDelta), Math.cos(rawDelta)); // 正規化到 -π ~ π
-
-  // 目前爬行進度：0=剛進入，1=走到底端
-  const progress = Math.min(1, Math.abs(height - stairEntryHeight) / STAIRCASE.totalHeight);
-
-  return rawAngle + delta * progress;
-}
-// ⚡ 新增：是否已經「真正踏上」樓梯（離開過入口那個邊界一小段距離），
-// 用來區分「剛從入口走進來，還在往中心走」跟「已經爬過一段、現在回到
-// 邊界想離開」這兩種情況——只有後者才套用下面寬鬆的90度離開容差，
-// 避免剛進入樓梯的那一瞬間就被誤判成「想離開」而彈出去。
-let stairCommitted = false;
 
 // ⚡ 計算兩個角度之間的最短差值，結果落在 -PI ~ PI 之間
 function angleDiff(a, b) {
@@ -1355,11 +1311,9 @@ function updateStaircase(delta) {
 
     if (diffFromEntrance <= entranceToleranceForHeight) {
       isOnStairRail = true;
-      stairCommitted = false; // ⚡ 每次重新進入樓梯，都要重新累積「真正踏上樓梯」的判定
       stairHeight = (camera.position.y > STAIRCASE.center.y + STAIRCASE.totalHeight / 2)
         ? STAIRCASE.totalHeight
         : 0;
-      stairEntryHeight = stairHeight; // ⚡ 記錄這次是從哪一端進入，供 getStairAngleAtHeight() 判斷修正方向
       // 反向旋转公式：角度 = offset - 比例*2π*turns
       stairAngleOffset = entryAngle + (stairHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
     }
@@ -1371,7 +1325,6 @@ function updateStaircase(delta) {
   const inputZ = Number(moveForward) - Number(moveBackward);
   const inputX = Number(moveRight) - Number(moveLeft);
   let inputDir = 0;
-  let outwardAmount = 0; // ⚡ 新增：玩家移動方向裡「朝樓梯中心以外走」的分量，見下方放行條件說明
 
   if (inputZ !== 0 || inputX !== 0) {
     const localDir = new THREE.Vector3(inputX, 0, -inputZ).normalize(); // ← 加负号
@@ -1391,57 +1344,27 @@ function updateStaircase(delta) {
     worldDir.y = 0; // 理論上必為0，保留只是保險
     worldDir.normalize();
 
-    const angleNow = getStairAngleAtHeight(stairHeight); // ⚡ 改用有終點修正的版本，避免離開判斷用到錯誤的理論角度
+    const angleNow = stairAngleOffset - (stairHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
     const tangentUp = new THREE.Vector3(Math.sin(angleNow), 0, -Math.cos(angleNow));
 
     inputDir = worldDir.dot(tangentUp);
-
-    // ⚡ 修正「靠樓梯邊緣持續平滑滑到底部卻出不去」的 bug：
-    // 原本到頂/到底要放行離開，只看 inputDir（跟當下螺旋切線方向的內積）
-    // 正負號對不對——但切線方向會隨高度/角度不斷旋轉，玩家在底部那個瞬間
-    // 實際按的方向不一定剛好對齊當下切線，內積可能接近0或正負號不對，
-    // 導致卡在原地出不去，非得刻意轉個特定角度才能觸發離開。
-    // 這裡額外算一個「玩家移動方向」跟「樓梯中心指向玩家的徑向方向」的
-    // 內積：只要玩家移動方向落在「正對外」左右各90度內就算通過，
-    // 概念上跟進入樓梯時用的角度容差是同一招，只是換成用在離開判斷上
-    // （實際套用邏輯見下方 stairCommitted 三元判斷）。
-    const outDx = camera.position.x - STAIRCASE.center.x;
-    const outDz = camera.position.z - STAIRCASE.center.z;
-    const outLen = Math.hypot(outDx, outDz) || 1;
-    outwardAmount = worldDir.x * (outDx / outLen) + worldDir.z * (outDz / outLen);
   }
 
   stairHeight += inputDir * STAIRCASE.climbSpeed * delta;
 
-  // ⚡ 一旦離開過入口邊界一小段距離，代表玩家已經「真正踏上」樓梯，
-  // 之後回到邊界時就可以套用寬鬆的離開容差，不用再等剛進入的那一瞬間。
-  const STAIR_COMMIT_MARGIN = 0.15; // 公尺，離開邊界超過這個距離才算「真正踏上」
-  if (stairHeight > STAIR_COMMIT_MARGIN && stairHeight < STAIRCASE.totalHeight - STAIR_COMMIT_MARGIN) {
-    stairCommitted = true;
-  }
-
-  // ⚡ 離開樓梯的角度容差：outwardAmount 是玩家移動方向跟「樓梯中心指向玩家」
-  // 徑向方向的內積（-1~1），outwardAmount > 0 代表移動方向落在「正對外」
-  // 左右各90度的半圓範圍內（cos(90°)=0），跟入口用的角度容差是同一種概念，
-  // 只是這裡直接用90度全開。只有 stairCommitted 為 true（已經真正踏上過
-  // 樓梯）才套用這個寬鬆判斷，避免剛進入樓梯、還在往中心走的那一瞬間
-  // 就被誤判成「想離開」而彈出去——那個階段仍然只看 inputDir 的正負號。
-  const canLeaveTop = stairCommitted ? outwardAmount > 0 : inputDir > 0;
-  const canLeaveBottom = stairCommitted ? outwardAmount > 0 : inputDir < 0;
-
-  if (stairHeight >= STAIRCASE.totalHeight && canLeaveTop) {
+  if (stairHeight >= STAIRCASE.totalHeight && inputDir > 0) {
     stairHeight = STAIRCASE.totalHeight;
     isOnStairRail = false;
     return;
   }
-  if (stairHeight <= 0 && canLeaveBottom) {
+  if (stairHeight <= 0 && inputDir < 0) {
     stairHeight = 0;
     isOnStairRail = false;
     return;
   }
   stairHeight = Math.max(0, Math.min(STAIRCASE.totalHeight, stairHeight));
 
-  const angle = getStairAngleAtHeight(stairHeight); // ⚡ 改用有終點修正的版本，爬到底時會精準對齊另一端真正的入口角度
+  const angle = stairAngleOffset - (stairHeight / STAIRCASE.totalHeight) * (Math.PI * 2 * STAIRCASE.turns);
   camera.position.x = STAIRCASE.center.x + Math.cos(angle) * STAIRCASE.walkRadius;
   camera.position.z = STAIRCASE.center.z + Math.sin(angle) * STAIRCASE.walkRadius;
 
@@ -2352,14 +2275,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
   // ✅ 把濾心卡片掛到對應裝置的正上方（一定要在這裡才做，
   // 因為要等 outletObjects / interactiveDevices 都填好之後才能定位）
   attachFilterCardsToScene();
-
-  // ✅ 把開關靠近提示（魚形）也掛到對應裝置上，原因跟上面濾心卡片一樣：
-  // 一定要等 interactiveDevices 填好之後才能找到掛載點。
-  attachSwitchHintsToScene();
-
-  // ✅ 把客廳門靠近提示也掛上去，原因相同：一定要等 doorAnimations
-  // 填好之後才能找到對應的 mesh。
-  attachDoorHintsToScene();
 });
 
 // ── 太陽平行光（右前方斜上 45°）──
@@ -2497,32 +2412,26 @@ xrayBtn.onclick = (e) => {
     : 'rgba(0,255,255,0.2)';
 
   // ⚡ 先顯示三點動畫（跟原本文字改變的時機點一致：選單還開著）
-  // ⚡ 修正：原本用雙重 requestAnimationFrame 等瀏覽器畫出「顯示中」那一格
-  // 畫面，但這個專案本身有自己的 animate() 主渲染迴圈也在搶 rAF 排程，
-  // 兩個雙重 rAF 很容易被瀏覽器排進同一個畫面更新週期一起執行，
-  // 中間根本沒有真正的畫面更新機會，三點動畫可能一次都沒被畫到螢幕上
-  // 就被隱藏了。改用 setTimeout 給一個固定的最短等待時間，能確保瀏覽器
-  // 一定會有真正的畫面更新機會，三點至少會被畫出來一次——即使
-  // toggleXRayMode() 本身跑得很快，使用者也能看到一下短暫的閃現，
-  // 不會像原本雙重rAF那樣完全沒被畫出來過。
   showXrayTransition();
-  setTimeout(() => {
-    toggleXRayMode(isXRayMode);
-    hideXrayTransition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      toggleXRayMode(isXRayMode);
+      hideXrayTransition();
 
-    // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
-    menuPanel.style.display = 'none';
+      // ⚡ 跟原本順序一致：toggleXRayMode 跑完，選單才關閉
+      menuPanel.style.display = 'none';
 
-    // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
-    // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
-    const exitBtn = document.getElementById('exit-btn');
-    if (exitBtn) exitBtn.classList.remove('show');
+      // ⚡ 修正：透過 xrayBtn 關閉選單時，之前漏了清掉「離開遊戲」按鈕的 show class，
+      // 導致進過透視模式後，離開遊戲按鈕會卡住一直顯示
+      const exitBtn = document.getElementById('exit-btn');
+      if (exitBtn) exitBtn.classList.remove('show');
 
-    setTimeout(() => {
-      unlockFromButton = false;
-      controls.lock();
-    }, 80);
-  }, 50);
+      setTimeout(() => {
+        unlockFromButton = false;
+        controls.lock();
+      }, 80);
+    });
+  });
 };
 menuPanel.appendChild(xrayBtn);
 
@@ -2830,16 +2739,12 @@ const filterUICards = {}; // { [device]: { wrapper, offsetWrapper, root, cssObje
 const RING_RADIUS = 26;
 const RING_CIRC = 2 * Math.PI * RING_RADIUS;
 // ── 圓環五色分區設定：0~100 對應「已使用百分比」，數字越大代表濾心越接近該換 ──
-// ⚡ 恢復5段：0~25藍、25~50綠、50~75黃、75~90橘、90~100紅。
-// 分區數量恢復，跟「單色提醒」邏輯不衝突：背景 trackCircle 跟前景進度弧
-// 一樣是依 currentZone 動態決定顏色，只是現在可選的顏色多了一種（多了綠色），
-// 跨過閾值（25%/50%/75%/90%）整圈就會換成對應顏色。
 const FILTER_RING_ZONES = [
-  { min: 0, max: 25, color: '#60a5fa', dim: 'rgba(59,130,246,0.25)' },   // 藍：安全
-  { min: 25, max: 50, color: '#4ade80', dim: 'rgba(34,197,94,0.25)' },   // 綠：良好
-  { min: 50, max: 75, color: '#facc15', dim: 'rgba(234,179,8,0.25)' },   // 黃：注意
-  { min: 75, max: 90, color: '#fb923c', dim: 'rgba(251,146,60,0.3)' },   // 橘：警戒
-  { min: 90, max: 100, color: '#ef4444', dim: 'rgba(220,38,38,0.3)' },   // 紅：危險
+  { min: 0, max: 25, color: '#60a5fa', dim: 'rgba(59,130,246,0.25)' },   // 藍
+  { min: 25, max: 50, color: '#4ade80', dim: 'rgba(34,197,94,0.25)' },    // 綠 ⚡ min 25→25，補上跟藍之間的縫隙
+  { min: 50, max: 75, color: '#facc15', dim: 'rgba(234,179,8,0.25)' },    // 黃 ⚡ 修正dim顏色（原本打錯成接近黑色）
+  { min: 75, max: 90, color: '#fb923c', dim: 'rgba(251,146,60,0.3)' },   // 橘 ⚡ 色相往黃橘偏移、透明度提高到0.40
+  { min: 90, max: 100, color: '#ef4444', dim: 'rgba(220,38,38,0.3)' },    // 紅 ⚡ 色相偏正紅、透明度提高到0.45，跟橘拉開差異
 ];
 
 // ⚡ 新增：把顏色跟白色混合，ratio 0 = 完全原色，1 = 完全變白，可以自由調整「多亮」
@@ -2941,18 +2846,26 @@ function createFilterCard(device) {
   bg.setAttribute('stroke', 'rgba(255,255,255,0.15)');
   bg.setAttribute('stroke-width', '6');
   svg.appendChild(bg);
-  // ⚡ 改成「單色提醒」：原本這裡是5段各自上色的 circle，背景永遠同時顯示
-  // 藍/綠/黃/橘/紅五種顏色，跟目前狀態無關。現在改成只有一條整圈的
-  // trackCircle，顏色由 updateFilterUI() 依「目前所在區段」即時設定，
-  // 永遠只呈現一種顏色（跟前景的進度弧同色系，只是較暗），
-  // 讓整個圓環在同一時間只透露一個顏色訊號，跨過閾值才整個換色。
-  const trackCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  trackCircle.setAttribute('cx', '40'); trackCircle.setAttribute('cy', '40'); trackCircle.setAttribute('r', String(RING_RADIUS));
-  trackCircle.setAttribute('fill', 'none');
-  trackCircle.setAttribute('stroke-width', '6');
-  trackCircle.setAttribute('stroke-dasharray', `${RING_CIRC} 0`); // 固定整圈，不隨用量變化
-  trackCircle.setAttribute('stroke', FILTER_RING_ZONES[0].dim); // 初始值，之後每次 updateFilterUI() 都會覆蓋
-  svg.appendChild(trackCircle);
+  // 5個區段各自一條 circle，靠 dasharray/dashoffset 只畫出自己負責的那段弧
+  // 5個區段各自一條 circle：現在只當「暗色參考刻度」，永遠是 dim，不會再整段點亮
+  // 5個區段各自一條 circle，靠 dasharray/dashoffset 只畫出自己負責的那段弧
+  // 5個區段各自一條 circle：現在只當「暗色參考刻度」，永遠是 dim，不會再整段點亮
+  const zoneCircles = FILTER_RING_ZONES.map(zone => {
+    const segLen = ((zone.max - zone.min) / 100) * RING_CIRC;
+    const dashOffset = RING_CIRC * (1 - zone.min / 100);
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', '40'); circle.setAttribute('cy', '40'); circle.setAttribute('r', String(RING_RADIUS));
+    circle.setAttribute('fill', 'none');
+    circle.setAttribute('stroke-width', '6');
+    circle.setAttribute('stroke-linecap', 'butt');
+    circle.setAttribute('stroke-dasharray', `${segLen} ${RING_CIRC - segLen}`);
+    circle.setAttribute('stroke-dashoffset', String(dashOffset));
+    circle.setAttribute('transform', 'rotate(-90 40 40)');
+    circle.setAttribute('stroke', zone.dim);
+    svg.appendChild(circle);
+    return circle;
+  });
 
   // ⚡ 新增：halo circle，貼在圓環的「已使用進度」那一段上，用來做呼吸光暈。
   // 粗細(stroke-width)、模糊(blur)都寫死固定值，動畫只透過 CSS class
@@ -2984,11 +2897,7 @@ function createFilterCard(device) {
 
   root.appendChild(svg);
 
-  // ⚡ 圓心文字改成三行顯示「剩餘」時／分／秒（原本是累積已用時間的單行長字串，
-  // 濾心壽命 2000 小時的極限值會變成「1999小時59分59秒」9個字，在 80px 圓環裡
-  // 塞不下）。拆成三行、各自固定寬度（時最多4位數、分秒固定2位數），版面不會
-  // 再隨壽命拉長而擠爆，秒數仍然每秒跳動一次維持「系統正在即時運算」的即時感。
-  // 方向也跟圓環的「剩餘量」邏輯一致：圓環消退、數字倒數，同步遞減不會打架。
+  // ⚡ 新增：圓心文字，顯示累積用水時間，方便核對資料庫讀到的數字對不對
   const timeText = document.createElement('div');
   Object.assign(timeText.style, {
     position: 'absolute',
@@ -2996,49 +2905,21 @@ function createFilterCard(device) {
     left: '50%',
     transform: 'translate(-50%, -50%)',
     color: '#fff',
+    fontSize: '10px',
+    fontWeight: '600',
     textAlign: 'center',
-    lineHeight: '1.15',
+    lineHeight: '1.3',
     whiteSpace: 'nowrap',
     textShadow: '0 1px 2px rgba(0,0,0,0.8)',
     pointerEvents: 'none',
   });
-
-  // 建立單一行（數值 + 單位），回傳這一行的 value span 供之後每次更新文字用
-  function makeRemainingTimeLine(unitLabel) {
-    const line = document.createElement('div');
-    Object.assign(line.style, {
-      display: 'flex',
-      alignItems: 'baseline',
-      justifyContent: 'center',
-      gap: '2px',
-    });
-    const valueSpan = document.createElement('span');
-    valueSpan.style.fontSize = '11px';
-    valueSpan.style.fontWeight = '600';
-    const unitSpan = document.createElement('span');
-    unitSpan.textContent = unitLabel;
-    unitSpan.style.fontSize = '8px';
-    unitSpan.style.fontWeight = '500';
-    unitSpan.style.opacity = '0.85';
-    line.appendChild(valueSpan);
-    line.appendChild(unitSpan);
-    timeText.appendChild(line);
-    return valueSpan;
-  }
-
-  const hourValueEl = makeRemainingTimeLine('時');
-  const minuteValueEl = makeRemainingTimeLine('分');
-  const secondValueEl = makeRemainingTimeLine('秒');
-
   root.appendChild(timeText);
 
   offsetWrapper.appendChild(root);
 
   filterUICards[device] = {
     wrapper, offsetWrapper, root, cssObject: null,
-    trackCircle, progressCircle, haloCircle,
-    hourValueEl, minuteValueEl, secondValueEl,
-    hideTimer: null, isVisible: false,
+    zoneCircles, progressCircle, haloCircle, timeText, hideTimer: null, isVisible: false,
   };
 }
 FILTER_DEVICES.forEach(createFilterCard);
@@ -3069,563 +2950,22 @@ function attachFilterCardsToScene() {
   });
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── 開關靠近提示：橘色魚形提示，靠近開關1公尺內彈出「按開關」──
-// ⚡ 效能設計刻意跟結束畫面的魚群動畫（見 createEndScreenAmbience）不同——
-// 那組魚是「3D渲染主迴圈已經停掉之後」才會啟動的JS逐幀steering動畫，
-// 這裡的提示是遊戲進行中隨時可能出現的，不能沿用同一套寫法。改成：
-//   1. 位置：沿用濾心卡片同一套 CSS2DObject／CSS2DRenderer，掛成裝置 mesh
-//      的子物件，跟著 Three.js 本來就會做的場景矩陣運算走，不用額外寫
-//      world-to-screen 投影。
-//   2. 上下浮動的動畫：純 CSS @keyframes，只動 transform，交給瀏覽器
-//      compositor thread 處理，不進 JS 的 animate() 迴圈，跟濾心圓環的
-//      呼吸光暈（filterRingGlowBreathe）同一招。沒有 .visible 時瀏覽器
-//      自動暫停動畫，沒人靠近時零成本。
-//   3. 距離判斷：用便宜的「兩點距離」計算，每幀都算一次（見下方
-//      updateSwitchHintVisibility 開頭的說明：裝置數量有限，成本可忽略，
-//      拿掉節流換取出現/消失門檻更即時準確）。
-//   4. 數量：整個場景的開關就是 PIPE_CONFIG 列出的幾個裝置（目前8個），
-//      距離檢查頂多8次減法+開根號，一幀跑一次也沒問題。
-// ═══════════════════════════════════════════════════════════
-
-const SWITCH_HINT_DEVICES = Object.keys(PIPE_CONFIG); // 場景裡所有可點擊開關的裝置名稱
-const SWITCH_HINT_RADIUS = 2.4;             // 靠近幾公尺內才彈出提示（Blender校正物件中心後實測值）
-const SWITCH_HINT_HEIGHT_OFFSET = 0.15;     // 相對於裝置本身往上偏移多少（跟濾心卡片的 0.2 錯開，避免疊在一起）
-const SWITCH_HINT_CHECK_INTERVAL = 0.2;     // 距離判斷節流間隔（秒）
-// ⚡ 保留節流：出現/消失用同一個 SWITCH_HINT_RADIUS，理論上就是同一個距離。
-// 節流間隔拉長時，移動速度快的話確實會讓「跨過門檻」跟「系統反應」之間
-// 出現一點延遲落差（0.2秒內走0.3~0.6公尺是有可能的），如果之後還是
-// 覺得落差明顯，可以把這個數字調小（例如 0.1），或恢復成每幀檢查
-// （8個裝置的距離計算成本本身可忽略，主要看你想不想接受這個延遲）。
-
-const switchHintCards = {}; // { [device]: { root, cssObject, isVisible, dismissedUntilLeave } }
-let switchHintCheckElapsed = 0;
-const _switchHintWorldPos = new THREE.Vector3(); // 重複使用的暫存向量，避免每次判斷都 new
-
-// ⚡ 魚形提示的 CSS keyframes + 樣式（只注入一次）。只動 transform + opacity，
-// GPU合成，跟濾心圓環呼吸光暈同樣的效能等級。
-const switchHintStyleTag = document.createElement('style');
-switchHintStyleTag.textContent = `
-.switch-hint-root {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 200ms ease-out;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-.switch-hint-root.visible {
-  opacity: 1;
-}
-/* ⚡ 文字現在放在魚群「上方」，不是畫在魚身上——跟裝置本身脫鉤，
-   單獨一行，兩條魚不管怎麼動、怎麼排列都不會影響文字的可讀性。 */
-.switch-hint-label {
-  color: rgba(255,255,255,0.9);
-  font-size: 15px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-/* ⚡ 兩條魚呈V字型分別站在物件斜上方兩側，魚頭都斜向下指向中間的物件
-   （物件本身在3D世界裡就在這個浮動群組的正下方）。固定寬高當畫布，
-   裡面兩個 slot 各自用絕對定位+旋轉角度擺放，不需要 scaleX 鏡射。 */
-.switch-hint-fish-group {
-  position: relative;
-  width: 80px;
-  height: 33px;
-}
-.switch-hint-fish-slot {
-  position: absolute;
-  top: 4px;
-}
-/* 左邊：站在物件左上方，旋轉40°後，原本朝右的魚頭會轉向右下，斜指物件 */
-.switch-hint-fish-slot.slot-left {
-  left: -10px;
-  transform: rotate(55deg);
-}
-/* 右邊：站在物件右上方，旋轉140°後，原本朝右的魚頭會轉向左下，斜指物件——
-   跟左邊剛好對稱，不用額外鏡射一份形狀。 */
-.switch-hint-fish-slot.slot-right {
-  right: -10px;
-  transform: rotate(135deg);
-}
-/* ⚡ 單條魚的基本形狀，永遠是「預設朝右」，實際朝向完全交給外層 slot 的
-   rotate() 角度決定。前進後退的「啃咬」動畫只動 translateX，套用在
-   已經被 slot 轉過角度的座標系裡，會自動沿著魚頭指的方向前進後退，
-   不用另外為每個角度寫一份動畫。 */
-.switch-hint-fish-h {
-  display: flex;
-  align-items: center;
-  animation: switchHintNibble 0.95s linear infinite;
-  will-change: transform;
-}
-/* ⚡ 另一條魚的動畫時長刻意跟左邊不一樣（0.95s vs 1.25s，不是簡單倍數關係），
-   兩條魚每次循環後的相對位置會持續往前漂移、不會永遠對得整整齊齊，
-   看起來才不會像兩隻機器手臂在對稱擺動。 */
-.switch-hint-fish-h.delayed {
-  animation-duration: 1.25s;
-  animation-delay: 0.3s;
-}
-/* ⚡ 原本是對稱的 ease-in-out（前衝跟退回速度一樣），改成不對稱的時間曲線：
-   前段(0%→22%)快速衝刺一口咬下去，中段(22%→38%)停頓一下像叼住不放，
-   後段(38%→100%)緩慢退回，速度節奏跟真實生物的動作比較接近，
-   不會是那種等速往返、一看就知道是在跑固定動畫的死板感。 */
-@keyframes switchHintNibble {
-  0%       { transform: translateX(0) scaleX(1); }
-  22%      { transform: translateX(9px) scaleX(0.88); }   /* 快速前衝一口咬下去 */
-  38%      { transform: translateX(8px) scaleX(0.92); }   /* 停頓一下，像叼住不放 */
-  100%     { transform: translateX(0) scaleX(1); }        /* 緩慢退回 */
-}
-.fish-body-h {
-  width: 25px;
-  height: 16px;
-  background: linear-gradient(180deg, #ffb454, #fb7a1f);
-  border-radius: 50%;
-  box-shadow: 0 0 8px rgba(251, 146, 60, 0.7), 0 2px 5px rgba(0,0,0,0.4);
-}
-/* 頭部尖端：指向右邊（旋轉前的預設方向，實際朝向由外層slot決定），底邊貼著魚身右緣 */
-.fish-head-h {
-  width: 0;
-  height: 0;
-  border-top: 7px solid transparent;
-  border-bottom: 7px solid transparent;
-  border-left: 9px solid #fb7a1f;
-  margin-left: -5px;
-  filter: drop-shadow(1px 0 2px rgba(0,0,0,0.3));
-}
-/* 尾鰭：故意做得比頭部小很多，貼著魚身左緣，才分得出頭尾方向 */
-.fish-tailfin-h {
-  width: 24px;               /* 適當加寬，讓凹陷更有視覺空間 */
-  height: 20px;
-  background-color: #fb7a1f;
-  margin-right: -10px;
-  filter: drop-shadow(-1px 0 2px rgba(0,0,0,0.25));
-
-  /* 4 個點描繪：左上 -> 右側尖端 -> 左下 -> 底部中央內凹點 */
-  clip-path: polygon(
-    0% 0%,      /* 1. 左上角尖點 */
-    100% 50%,   /* 2. 右側指向尖點 */
-    0% 100%,    /* 3. 左下角尖點 */
-    35% 50%     /* 4. 左側底邊內凹點（向右深陷進去） */
-  );
-}
-`;
-document.head.appendChild(switchHintStyleTag);
-
-// 建立單一「魚」的形狀（尾鰭 → 橢圓魚身 → 頭部尖端），永遠預設朝右，
-// 實際朝向交給外層 slot 的 rotate() 決定，給下面 createSwitchHint() 組出兩條魚共用。
-function buildSwitchHintFish(extraClass) {
-  const fish = document.createElement('div');
-  fish.className = extraClass ? `switch-hint-fish-h ${extraClass}` : 'switch-hint-fish-h';
-
-  const tailFin = document.createElement('div');
-  tailFin.className = 'fish-tailfin-h';
-
-  const body = document.createElement('div');
-  body.className = 'fish-body-h';
-
-  const head = document.createElement('div');
-  head.className = 'fish-head-h';
-
-  fish.appendChild(tailFin);
-  fish.appendChild(body);
-  fish.appendChild(head);
-  return fish;
-}
-
-// 建立單一開關的提示 DOM：上方文字「按一下」+ 下方兩條魚呈V字型立在物件斜上方兩側
-// （cssObject 要等場景 GLTF 載入完成才補上，見 attachSwitchHintsToScene）
-// ⚡ 外層 wrapper 乾淨地交給 CSS2DObject 自己管定位（它每一幀都會直接
-// 覆寫 style.transform 做世界座標轉螢幕座標），我方的置中/浮動動畫樣式
-// 全部搬到內層 root，避免兩邊搶著寫同一個元素的 transform 導致互相蓋掉
-// （這正是濾心卡片用 wrapper→offsetWrapper→root 三層結構的同一個理由）。
-function createSwitchHint(device) {
-  const wrapper = document.createElement('div'); // 這層交給 CSS2DObject，內容不放任何自訂 transform
-
-  const root = document.createElement('div');
-  root.className = 'switch-hint-root';
-
-  const label = document.createElement('div');
-  label.className = 'switch-hint-label';
-  label.textContent = '按開關';
-
-  const group = document.createElement('div');
-  group.className = 'switch-hint-fish-group';
-
-  // 左邊：slot-left 旋轉40°後，魚頭斜指向右下方的物件
-  const slotLeft = document.createElement('div');
-  slotLeft.className = 'switch-hint-fish-slot slot-left';
-  slotLeft.appendChild(buildSwitchHintFish());
-
-  // 右邊：slot-right 旋轉140°後，魚頭斜指向左下方的物件——跟左邊對稱，
-  // 用的是同一份「預設朝右」的魚形，不需要額外鏡射；animation-delay
-  // 錯開，兩條魚才不會同時前衝、看起來呆板。
-  const slotRight = document.createElement('div');
-  slotRight.className = 'switch-hint-fish-slot slot-right';
-  slotRight.appendChild(buildSwitchHintFish('delayed'));
-
-  group.appendChild(slotLeft);
-  group.appendChild(slotRight);
-
-  root.appendChild(label);
-  root.appendChild(group);
-  wrapper.appendChild(root);
-
-  switchHintCards[device] = { wrapper, root, cssObject: null, isVisible: false, dismissedUntilLeave: false };
-}
-SWITCH_HINT_DEVICES.forEach(createSwitchHint);
-
-// ═══════════════════════════════════════════════════════════
-// ── 門靠近提示：距離指定的門2公尺內彈出「按門開關」──
-// 跟上面開關的魚形提示（SWITCH_HINT_*）是完全獨立的系統，差異點：
-//   1. 支援多個裝置（DOOR_HINT_DEVICES 陣列），但全部共用同一個
-//      doorHintSeen 旗標——只要其中任何一扇門觸發過這個提示，
-//      代表玩家已經學會「按門可以開關」，其餘的門就不會再顯示，
-//      不是每個裝置各自獨立記錄「看過了沒」。
-//   2. ⚡ 沒有魚了。改成「光暈 + 文字浮現」的設計，抓的是「靠近時
-//      像神明現身說話」的氛圍：中間一團柔和的放射狀光暈，文字從
-//      模糊、縮小、透明的狀態，緩緩浮現放大、清晰、發光，像從
-//      光裡顯現出來，光暈本身則是持續、輕微的呼吸律動（infinite，
-//      但只是純CSS的opacity/scale變化，成本極低，概念上跟濾心圓環
-//      的呼吸光暈是同一招）。
-//   3. 文字「按門開關」不會自己倒數消失，會一直留著，直到玩家真的
-//      按了其中一扇門才消失；按過之後 doorHintSeen 永久設成 true，
-//      之後不管再靠近哪一扇門都不會再彈出這個提示——這是一次性的
-//      教學提示，不是每次靠近都要重複提醒的常駐UI。
-// ⚡ 效能：裝置數量少（目前2個），只有簡單的 opacity/scale/blur CSS
-// 動畫，沒有任何JS逐幀運算，比原本的魚更省。
-// ═══════════════════════════════════════════════════════════
-
-// ⚡ 每個裝置除了名字，還帶一個 offsetX——因為不同門的物件中心（pivot）
-// 在Blender裡不一定量測得完全一致（例如door_livingroom的中心點在門軸，
-// 需要往門片中央方向修正），所以做成可以逐一調整，不是全部門共用同一個值。
-const DOOR_HINT_DEVICES = [
-  { name: 'door_livingroom', offsetX: 0.8 },
-  { name: 'kit_sliding_door', offsetX: 0 }, // ⚡ 先給0，之後看實際畫面偏移多少再調整
-];
-const DOOR_HINT_RADIUS = 3.5;              // 靠近幾公尺內彈出提示
-const DOOR_HINT_HEIGHT_OFFSET = 0.4;     // 相對於門本身往上偏移多少
-
-let doorHintSeen = false; // ⚡ 共用旗標：只要按過「任一扇」門，之後所有門都不再顯示提示
-const doorHintInstances = {}; // { [device]: { wrapper, root, label, cssObject, offsetX, isVisible } }
-const _doorHintWorldPos = new THREE.Vector3(); // 重複使用的暫存向量，避免每次判斷都 new
-
-// ⚡「神明現身」的光暈 + 文字浮現效果：
-//   .door-hint-glow：放射狀漸層光暈，持續輕微呼吸律動（infinite，但只是
-//   opacity/scale，成本極低）。
-//   .door-hint-label：文字本身，從模糊縮小透明 → 清晰放大顯現，
-//   是一次性動畫（不加infinite，配合 forwards 停在顯現後的最終狀態），
-//   每次從隱藏變顯示都會透過 triggerDoorHintAppear() 重新播放一次。
-const doorHintStyleTag = document.createElement('style');
-doorHintStyleTag.textContent = `
-.door-hint-root {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 300ms ease-out;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.door-hint-root.visible {
-  opacity: 1;
-}
-.door-hint-glow {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 220px;   /* ⚡ 放大：原本140px，範圍越大數字越大 */
-  height: 220px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(circle,
-    rgba(255,255,255,0.5) 0%,
-    rgba(191,219,254,0.3) 30%,
-    rgba(147,197,253,0.12) 55%,
-    rgba(147,197,253,0) 75%);
-  pointer-events: none;
-  animation: doorHintGlowBreathe 2.6s ease-in-out infinite;
-}
-/* ⚡ 新增：黑色圓底，疊在光暈上方、文字下方，讓白色文字有足夠對比、
-   不會被場景背景吃掉。比光暈小一圈，露出外圍的光暈當作發光邊緣。 */
-@keyframes doorHintGlowBreathe {
-  0%, 100% { opacity: 0.65; transform: translate(-50%, -50%) scale(0.92); }
-  50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.08); }
-}
-.door-hint-label {
-  position: relative;
-  color: #000000;
-  font-size: 17px;
-  font-weight: 700;
-  white-space: nowrap;
-  text-shadow: 0 0 6px rgba(255,255,255,0.9), 0 0 14px rgba(191,219,254,0.7);
-  letter-spacing: 1px;
-}
-/* ⚡ 一次性「浮現」動畫：跟葉子的細縫展開動畫同時開始，
-   從模糊、縮小、透明開始，緩緩放大、清晰、顯現，不加infinite，
-   播完停在顯現後的最終狀態（forwards）。要重播必須由
-   triggerDoorHintAppear() 主動移除再加回 class，是標準的CSS動畫
-   重播技巧。 */
-.door-hint-label.appearing {
-  animation: doorHintLabelAppear 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes doorHintLabelAppear {
-  0%   { opacity: 0; transform: scale(0.4); filter: blur(6px); }
-  60%  { opacity: 1; transform: scale(1.08); filter: blur(0px); }
-  100% { opacity: 1; transform: scale(1); filter: blur(0px); }
-}
-/* ⚡ 葉子改成「發光細縫展開」出現：一開始沿著葉子本身的斜向
-   （rotate(-20deg)，右上到左下）壓扁成一條細線，帶著明顯的發光感，
-   接著沿同一條斜線展開放大，變成完整的葉子形狀——像一道光縫裂開，
-   從中間展開出葉片。跟文字一起靠外層 .door-hint-root 的 opacity
-   切換來顯示/隱藏（見 setDoorHintVisible），一起出現、一起消失。
-   全程只動 opacity/transform/filter，GPU合成，一次性播放，播完就停
-   在完全展開的狀態（forwards），不會反覆重播（要重播由
-   triggerDoorHintAppear() 統一觸發）。 */
-.door-hint-leaf-wrap {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 52px;
-  height: 52px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-.door-hint-leaf {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, #86efac, #16a34a);
-  border-radius: 0% 100% 0% 100%;
-  opacity: 0;
-  /* 初始狀態：沿著葉子自己的斜向（-20deg）壓扁成一條細縫，
-     scaleX 壓到接近0，展開時只需要把 scaleX 放大回1即可，
-     細縫跟展開後的葉子會是同一條斜線方向，不會歪掉。 */
-  transform: rotate(-20deg) scaleX(0.03);
-  box-shadow: 0 0 10px rgba(134,239,172,0.95), 0 0 22px rgba(22,163,74,0.7);
-}
-.door-hint-leaf-wrap.leaf-playing .door-hint-leaf {
-  animation: doorHintLeafOpen 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-@keyframes doorHintLeafOpen {
-  0%   { opacity: 1; transform: rotate(-20deg) scaleX(0.03); filter: brightness(1.7); }
-  40%  { opacity: 1; transform: rotate(-20deg) scaleX(0.03); filter: brightness(1.7); } /* 細縫先停留一下再展開，讓「這是一條縫」的瞬間夠明顯 */
-  100% { opacity: 1; transform: rotate(-20deg) scaleX(1);    filter: brightness(1); }
-}
-`;
-document.head.appendChild(doorHintStyleTag);
-
-// 建立葉子 DOM（單一葉形，靠 scaleX 從細縫展開成完整葉子，不再需要像素格）。
-function buildDoorHintLeaf() {
-  const wrap = document.createElement('div');
-  wrap.className = 'door-hint-leaf-wrap';
-
-  const leaf = document.createElement('div');
-  leaf.className = 'door-hint-leaf';
-  wrap.appendChild(leaf);
-
-  return wrap;
-}
-
-// 建立單一裝置的門提示 DOM 結構（cssObject 要等場景 GLTF 載入完成才補上，
-// 見 attachDoorHintsToScene）。跟開關提示一樣，用陣列 forEach 建立多個實體，
-// 但共用的是同一個全域 doorHintSeen 旗標，不是各自獨立判斷。
-function createDoorHint(config) {
-  const wrapper = document.createElement('div'); // 交給 CSS2DObject 自己管定位，跟開關提示同樣的理由
-
-  const root = document.createElement('div');
-  root.className = 'door-hint-root';
-
-  const glow = document.createElement('div');
-  glow.className = 'door-hint-glow';
-
-  const leafWrap = buildDoorHintLeaf();
-
-  const label = document.createElement('div');
-  label.className = 'door-hint-label';
-  label.textContent = '按門開關';
-
-  root.appendChild(glow);
-  root.appendChild(leafWrap);
-  root.appendChild(label);
-  wrapper.appendChild(root);
-
-  doorHintInstances[config.name] = {
-    wrapper, root, label, leafWrap, cssObject: null,
-    offsetX: config.offsetX || 0, isVisible: false,
-  };
-}
-DOOR_HINT_DEVICES.forEach(createDoorHint);
-
-// 把每個門提示掛到3D場景裡：跟濾心卡片/開關提示同一套做法，掛在門 mesh
-// 本身上，一定要等 GLTF 模型載入完成、doorAnimations 都填好之後才能呼叫。
-function attachDoorHintsToScene() {
-  DOOR_HINT_DEVICES.forEach(({ name }) => {
-    const hint = doorHintInstances[name];
-    if (!hint || hint.cssObject) return; // 已經掛過了
-
-    const anim = doorAnimations[name];
-    if (!anim || !anim.mesh) {
-      console.warn(`[DoorHint] 找不到 ${name} 對應的3D物件，門提示無法定位`);
-      return;
-    }
-    const cssObject = new CSS2DObject(hint.wrapper);
-    cssObject.position.set(hint.offsetX, DOOR_HINT_HEIGHT_OFFSET, 0);
-    anim.mesh.add(cssObject);
-    hint.cssObject = cssObject;
-  });
-}
-
-// ⚡ 重新觸發指定裝置文字的「浮現」動畫：先拿掉 class 強制瀏覽器
-// reflow，再重新加回去，CSS animation 才會從頭播放一次——同一個 class
-// 只在第一次加上去時會觸發動畫，之後不會自動重播，這是標準的CSS動畫
-// 重播技巧，成本是一次同步的樣式讀取（offsetWidth），可忽略。
-function triggerDoorHintAppear(device) {
-  const hint = doorHintInstances[device];
-  if (!hint) return;
-
-  // ⚡ 葉子（發光細縫展開）跟文字是兩個獨立的一次性動畫，兩者同時
-  // 開始播放，一起重新觸發才會維持同步的「重播」效果。
-  hint.leafWrap.classList.remove('leaf-playing');
-  void hint.leafWrap.offsetWidth; // 強制 reflow，讓瀏覽器認為這是「新的一次」動畫
-  hint.leafWrap.classList.add('leaf-playing');
-
-  hint.label.classList.remove('appearing');
-  void hint.label.offsetWidth;
-  hint.label.classList.add('appearing');
-}
-
-// 顯示/隱藏指定裝置的門提示；從隱藏變顯示的那一刻（rising edge）
-// 順便重播浮現動畫
-function setDoorHintVisible(device, visible) {
-  const hint = doorHintInstances[device];
-  if (!hint || hint.isVisible === visible) return;
-  hint.isVisible = visible;
-  hint.root.classList.toggle('visible', visible);
-  if (visible) {
-    triggerDoorHintAppear(device);
-  }
-}
-
-// ⚡ 使用者按下「任一扇」門時呼叫：doorHintSeen 永久設成 true，
-// 所有門提示立刻一起隱藏，之後不管再靠近哪一扇門都不會再顯示——
-// 這是共用的教學型一次性提示，跟開關提示「離開範圍後下次靠近還會
-// 再彈出」的行為刻意不同。
-function dismissDoorHintPermanently() {
-  doorHintSeen = true;
-  DOOR_HINT_DEVICES.forEach(({ name }) => setDoorHintVisible(name, false));
-}
-
-// ⚡ 距離判斷：裝置數量少，每幀對每個裝置算一次「兩點距離」成本可忽略，
-// 不需要像開關提示那樣特別節流。doorHintSeen 一旦是 true 就整個跳過，
-// 連距離計算都省了。
-function updateDoorHintsVisibility() {
-  if (doorHintSeen) return;
-  DOOR_HINT_DEVICES.forEach(({ name }) => {
-    const hint = doorHintInstances[name];
-    if (!hint || !hint.cssObject) return;
-    hint.cssObject.getWorldPosition(_doorHintWorldPos);
-    const dist = camera.position.distanceTo(_doorHintWorldPos);
-    setDoorHintVisible(name, dist <= DOOR_HINT_RADIUS);
-  });
-}
-
-
-// ⚡ 把魚形提示掛到3D場景裡：跟濾心卡片（attachFilterCardsToScene）同一套做法，
-// 掛在裝置 mesh 本身上，一定要等 GLTF 模型載入完成、interactiveDevices
-// 都填好之後才能呼叫。
-function attachSwitchHintsToScene() {
-  // 🔧 暫時除錯用：列出 PIPE_CONFIG 8 個開關裡，哪些成功掛上、哪些找不到對應mesh。
-  // 排查完之後可以把這行 console.log 拿掉。
-  console.log('[SwitchHint] interactiveDevices 目前收錄的mesh名稱:', interactiveDevices.map(m => m.name.toLowerCase()));
-
-  SWITCH_HINT_DEVICES.forEach(device => {
-    const hint = switchHintCards[device];
-    if (!hint || hint.cssObject) return; // 已經掛過了就不要重複掛
-
-    const anchorParent = interactiveDevices.find(m => m.name.toLowerCase() === device);
-    if (!anchorParent) {
-      console.warn(`[SwitchHint] 找不到 ${device} 對應的3D物件，開關提示無法定位`);
-      return;
-    }
-
-    const cssObject = new CSS2DObject(hint.wrapper);
-    cssObject.position.set(0, SWITCH_HINT_HEIGHT_OFFSET, 0);
-    anchorParent.add(cssObject);
-    hint.cssObject = cssObject;
-    console.log(`[SwitchHint] ${device} 掛載成功`); // 🔧 暫時除錯用，排查完可拿掉
-  });
-}
-
-// 顯示/隱藏單一開關的提示（給距離判斷跟點擊事件共用）
-function setSwitchHintVisible(device, visible) {
-  const hint = switchHintCards[device];
-  if (!hint || !hint.cssObject) return;
-  if (hint.isVisible === visible) return;
-  hint.isVisible = visible;
-  hint.root.classList.toggle('visible', visible);
-}
-
-// ⚡ 使用者按下開關時呼叫：立刻隱藏提示，並標記「這次靠近先不要再彈出來」，
-// 避免下一輪距離判斷（最多 SWITCH_HINT_CHECK_INTERVAL 秒後）又把它顯示回來，
-// 造成一按下去提示又立刻彈回來的閃爍感。等使用者離開 SWITCH_HINT_RADIUS
-// 範圍之後才會解除標記，下次重新靠近才會再次提示。
-function dismissSwitchHint(device) {
-  const hint = switchHintCards[device];
-  if (!hint) return;
-  hint.dismissedUntilLeave = true;
-  setSwitchHintVisible(device, false);
-}
-
-// ⚡ 節流：每 SWITCH_HINT_CHECK_INTERVAL 秒才對每個開關算一次距離，
-// 不是每一幀都算。裝置數量有限（目前8個），成本可忽略，但保留節流
-// 給移動裝置/低階顯卡多一點安全邊際。
-function updateSwitchHintVisibility() {
-  SWITCH_HINT_DEVICES.forEach(device => {
-    const hint = switchHintCards[device];
-    if (!hint || !hint.cssObject) return;
-
-    hint.cssObject.getWorldPosition(_switchHintWorldPos);
-    const dist = camera.position.distanceTo(_switchHintWorldPos);
-    const inRange = dist <= SWITCH_HINT_RADIUS;
-
-    // 🔧 暫時除錯用：印出每個開關目前的距離跟是否該顯示。排查完可拿掉整個 if 區塊。
-    if (window.__SWITCH_HINT_DEBUG__) {
-      console.log(`[SwitchHint] ${device} 距離=${dist.toFixed(2)}m inRange=${inRange} dismissed=${hint.dismissedUntilLeave}`);
-    }
-
-    if (!inRange) {
-      hint.dismissedUntilLeave = false; // 離開範圍後解除「按過先不彈」的標記
-    }
-    setSwitchHintVisible(device, inRange && !hint.dismissedUntilLeave);
-  });
-}
-
 // ⚡ 節流重點：這個函式只在 FILTER_UI_UPDATE_INTERVAL 秒才會被呼叫一次，
 // 不是每一幀都跑，所以裡面的 DOM 操作（改 3 個屬性）成本完全可以忽略。
-// ⚡ 改成計算「剩餘」時間（原本是累積已用時間）。方向理由：
-// 圓環已經改成「剩餘量」邏輯（滿圈=全新，用越多消退越多），文字如果還顯示
-// 「已用」會變成圓環往下消、數字往上加，方向相反、使用者會覺得兜不起來。
-// 拆成 {h, m, s} 三個獨立數字字串（不是組成一整串），讓呼叫端能各自塞進
-// 圓心的三行版面，不受濾心壽命拉長（分母變大）影響文字寬度。
-// 秒數仍然每秒遞減跳動一次（配合 FILTER_UI_UPDATE_INTERVAL），
-// 使用者能立刻感受到「系統正在即時運算」，不會誤以為數字卡住沒在動。
-function formatRemainingParts(remainSeconds) {
-  const s = Math.max(0, Math.floor(remainSeconds));
+// ⚡ 已用時間改用「時分秒」顯示，而不是「小時＋小數1位」。
+// 原因：濾心壽命是 2000 小時，如果直接顯示成小時、只取小數點後1位，
+// 使用者要連續開超過6分鐘水，數字才會從 0.0 跳到 0.1，短時間測試時
+// 會誤以為數字卡住沒在動。改成時分秒之後，每過1秒（配合
+// FILTER_UI_UPDATE_INTERVAL）畫面上的「秒」就會跳動一次，
+// 使用者能立刻感受到「正在累加」，長時間使用後自動換算成小時/分鐘顯示。
+function formatUsedDuration(totalSeconds) {
+  const s = Math.floor(totalSeconds);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  return {
-    h: String(h),
-    m: String(m).padStart(2, '0'),
-    s: String(sec).padStart(2, '0'),
-  };
+  if (h > 0) return `${h}小時${m}分${sec}秒`;
+  if (m > 0) return `${m}分${sec}秒`;
+  return `${sec}秒`;
 }
 
 function updateFilterUI(device) {
@@ -3634,30 +2974,23 @@ function updateFilterUI(device) {
   if (!card || !st) return;
 
   const usedPercent = Math.min(100, (st.usedSeconds / FILTER_LIFETIME_SECONDS) * 100);
-  // ⚡ 剩餘量：圓環進度弧、圓心文字都改用這個數字，兩者方向才會一致
-  // （滿=全新，用越多消退越多，跟油量/電量的直覺一致）。
-  const remainSeconds = Math.max(0, FILTER_LIFETIME_SECONDS - st.usedSeconds);
-  const remainPercent = 100 - usedPercent;
 
-  // 找出目前所在的區段，只用來決定進度弧該上什麼顏色。
-  // ⚡ 這裡刻意仍用 usedPercent（不是 remainPercent）去查表：FILTER_RING_ZONES
-  // 的 min/max 定義本來就是描述「已用到多少會進入哪個危險等級」，語意沒有變，
-  // 只有下面畫圓環弧長的地方改成用剩餘量，兩者不衝突、也不用重寫一套新的分區表。
+  // 找出目前所在的區段，只用來決定進度弧該上什麼顏色
   const currentZone = FILTER_RING_ZONES.find((zone, i) => {
     const isLast = i === FILTER_RING_ZONES.length - 1;
     return usedPercent >= zone.min && (isLast ? usedPercent <= zone.max : usedPercent < zone.max);
   }) || FILTER_RING_ZONES[FILTER_RING_ZONES.length - 1];
 
-  // ⚡ 單色提醒：背景整圈 trackCircle 統一改成「目前所在區段」的暗色版本，
-  // 不再是永遠同時顯示5種顏色的分段背景。前景進度弧（下面）也是同一個
-  // currentZone 的亮色版本，兩者同色系，整個圓環在同一時間只透露一種顏色，
-  // 跨過閾值（50%/75%/90%）才會整圈一起換色。
-  card.trackCircle.setAttribute('stroke', currentZone.dim);
+  // 背景5段永遠是暗色刻度，不會再整段點亮
+  card.zoneCircles.forEach((circle, i) => {
+    circle.setAttribute('stroke', FILTER_RING_ZONES[i].dim);
+  });
 
-  // ⚡ 進度弧改成畫「剩餘量」：滿圈=濾心全新，隨使用時間增加逐漸消退。
-  // 顏色依然跟著目前所在區段換色（由上面 currentZone 決定），並套用飽和度/光暈。
-  // 線條核心用「混白後」的顏色（更亮），光暈維持原本飽和色（保留辨色度）。
-  const progressLen = (remainPercent / 100) * RING_CIRC;
+  // ⚡ 進度弧：長度依已用百分比，顏色跟著目前所在區段換色，並套用飽和度/光暈
+  // ⚡ 進度弧：線條核心用「混白後」的顏色（更亮），光暈維持原本飽和色（保留辨色度）
+  // ⚡ 進度弧：長度依已用百分比，顏色跟著目前所在區段換色，並套用飽和度/光暈
+  // ⚡ 進度弧：線條核心用「混白後」的顏色（更亮），光暈維持原本飽和色（保留辨色度）
+  const progressLen = (usedPercent / 100) * RING_CIRC;
   const coreColor = mixWithWhite(currentZone.color, FILTER_RING_BRIGHTEN_RATIO);
   card.progressCircle.setAttribute('stroke-dasharray', `${progressLen} ${RING_CIRC - progressLen}`);
   card.progressCircle.setAttribute('stroke', coreColor);
@@ -3669,13 +3002,8 @@ function updateFilterUI(device) {
   // 已被 FILTER_UI_UPDATE_INTERVAL 節流成每秒才更新一次，成本可忽略。
   card.haloCircle.setAttribute('stroke', currentZone.color);
 
-  // ⚡ 圓心改成三行顯示「剩餘」時／分／秒，方向跟圓環同步遞減，
-  // 秒數持續跳動維持「系統正在即時運算」的即時感，同時三行固定寬度
-  // 不會因為濾心壽命拉長（分母變大）而擠爆版面。
-  const remainingParts = formatRemainingParts(remainSeconds);
-  card.hourValueEl.textContent = remainingParts.h;
-  card.minuteValueEl.textContent = remainingParts.m;
-  card.secondValueEl.textContent = remainingParts.s;
+  // ⚡ 圓心顯示累積用水時間，方便核對資料庫讀到的秒數是否正確
+  card.timeText.textContent = formatUsedDuration(st.usedSeconds);
 }
 
 // ⚡ 解決「兩個水龍頭太靠近，卡片互相蓋住」的問題：
@@ -4377,17 +3705,6 @@ renderer.domElement.addEventListener('click', () => {
           partnerAnim.isOpen = newIsOpen;
         }
       });
-
-      // ⚡ 修正：使用者按過「其中一扇」有教學提示的門就該永久消失，
-      // 但原本只檢查「直接點擊」的那扇門名稱（doorName），沒有把
-      // 連動門（partners，例如雙開門的另一片）也算進去——如果玩家
-      // 點的是連動門的「另一片」，door_livingroom 會透過連動一起打開，
-      // 但提示卻沒消失，因為 doorName 對不上。改成 doorName 本身
-      // 或任何一個連動夥伴，只要有一個落在 DOOR_HINT_DEVICES 裡就算數。
-      const namesAffected = [doorName, ...partners];
-      if (DOOR_HINT_DEVICES.some(d => namesAffected.includes(d.name))) {
-        dismissDoorHintPermanently();
-      }
     }
     return;
   }
@@ -4399,10 +3716,6 @@ renderer.domElement.addEventListener('click', () => {
   const targetName = intersects[0].object.name.toLowerCase();
   const cfg = PIPE_CONFIG[targetName];
   if (!cfg) return;
-
-  // ⚡ 使用者實際按下這個開關了：不管是要打開還是關閉水，
-  // 提示的任務已經達成，立刻讓魚形提示消失（見 dismissSwitchHint 內的節流說明）。
-  dismissSwitchHint(targetName);
 
   const firstColdKey = cfg.coldPipes[cfg.coldPipes.length - 1];
   const firstColdPipe = flowingPipes.get(firstColdKey);
@@ -4639,18 +3952,6 @@ function animate(nowMs) {
     filterCardVisibilityElapsed = 0;
     updateFilterUIVisibility();
   }
-
-  // ⚡ 開關靠近提示：距離判斷節流至每 SWITCH_HINT_CHECK_INTERVAL(0.2) 秒一次，
-  // 不需要每一幀都算，詳見 updateSwitchHintVisibility() 上方的效能說明。
-  switchHintCheckElapsed += delta;
-  if (switchHintCheckElapsed >= SWITCH_HINT_CHECK_INTERVAL) {
-    switchHintCheckElapsed = 0;
-    updateSwitchHintVisibility();
-  }
-
-  // ⚡ 客廳門靠近提示：裝置數量少，每幀直接算一次距離即可，
-  // 不需要額外的節流變數，詳見 updateDoorHintsVisibility() 上方的效能說明。
-  updateDoorHintsVisibility();
 
   // 移動
   if (controls.isLocked) {
