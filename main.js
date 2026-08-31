@@ -3452,7 +3452,7 @@ doorHintStyleTag.textContent = `
   opacity: 0;
 }
 .door-hint-leaf-wrap.leaf-playing .door-hint-leaf-sweep {
-  animation: doorHintLeafSweep 0.9s ease-in-out forwards;
+  animation: doorHintLeafSweep 0.8s ease-in-out forwards;
 }
 @keyframes doorHintLeafSweep {
   /* ⚡ filter: brightness(...) 疊加在遮罩本身的模糊之上，中段(50%)
