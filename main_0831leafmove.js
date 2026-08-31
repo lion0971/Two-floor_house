@@ -3351,27 +3351,18 @@ doorHintStyleTag.textContent = `
     rgba(147,197,253,0.12) 55%,
     rgba(147,197,253,0) 75%);
   pointer-events: none;
-  opacity: 0; /* ⚡ 修正：預設不顯示，等葉子動畫觸發時才一起淡入+開始呼吸律動 */
-}
-/* ⚡ 修正「背景光暈太早出來」的問題：原本這個呼吸律動animation是
-   無條件套用在 .door-hint-glow 上，只要元素存在就會一直跑（即使
-   root還是opacity:0看不見），玩家真正靠近、root淡入的那一刻，光暈
-   動畫其實已經跑了一段時間、可能正好在呼吸律動的任意一個階段，
-   不是跟葉子動畫同步從頭開始。改成掛在 .leaf-playing 這個class下面
-   （跟葉子、文字共用同一個觸發時機，見 triggerDoorHintAppear），
-   才會在葉子動畫開始的同一瞬間，光暈也從頭淡入、開始呼吸。 */
-.door-hint-glow.glowing {
-  opacity: 1;
   animation: doorHintGlowBreathe 2.6s ease-in-out infinite;
 }
+/* ⚡ 新增：黑色圓底，疊在光暈上方、文字下方，讓白色文字有足夠對比、
+   不會被場景背景吃掉。比光暈小一圈，露出外圍的光暈當作發光邊緣。 */
 @keyframes doorHintGlowBreathe {
   0%, 100% { opacity: 0.65; transform: translate(-50%, -50%) scale(0.92); }
   50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.08); }
 }
 .door-hint-label {
   position: absolute;
-  z-index: 2; /* 層級較高，確保字不會被遮罩蓋住 */
-  color: #ffffff;
+  z-index: 2; /* 層級較高，確保字不會被葉子遮住 */
+  color: #ffffff; /* 疊在綠葉上改用白色，對比度比黑字清楚 */
   font-weight: bold;
   font-size: 17px;
   pointer-events: none;
@@ -3384,38 +3375,34 @@ doorHintStyleTag.textContent = `
   left: 50%;
   transform: translate(-50%, -50%);
   margin: 0;
-
-  /* ⚡ 一開始整個文字用 clip-path 從右側完全裁掉（看不到），
-     動畫時把裁切邊界從左往右推，露出的部分越來越多，形成「由左到右
-     被擦拭出現」的效果。跟 transform 完全無關，所以不會跟上面的
-     translate(-50%,-50%)置中互相打架，不需要在keyframe裡重複寫。 */
-  clip-path: inset(0 100% 0 0);
 }
-/* ⚡ 一次性「擦拭露出」動畫：從左到右逐漸露出文字。延遲 0.45 秒才
-   開始（剛好對到下面葉子亮光掃過動畫 doorHintLeafSweep 的中段
-   50%，也就是整片葉形亮度最高的那一刻），讓人感覺是「亮光刷到最亮
-   的瞬間，帶出了文字」，不加infinite，播完停在完全顯示的狀態
-   （forwards）。要重播必須由 triggerDoorHintAppear() 主動移除
-   再加回 class，是標準的CSS動畫重播技巧。 */
+/* ⚡ 一次性「浮現」動畫：跟葉子的生長動畫同時開始，
+   從模糊、縮小、透明開始，緩緩放大、清晰、顯現，不加infinite，
+   播完停在顯現後的最終狀態（forwards）。要重播必須由
+   triggerDoorHintAppear() 主動移除再加回 class，是標準的CSS動畫
+   重播技巧。
+   ⚡ 修正：.door-hint-label 現在改用 position:absolute +
+   translate(-50%,-50%) 置中（不再是靠flex置中），而這裡的動畫本身
+   也會動 transform——CSS的transform動畫是整個屬性覆蓋，不是疊加，
+   所以每一格 keyframe 都要把 translate(-50%,-50%) 一起寫進去，
+   不然動畫播放期間置中平移會被暫時蓋掉，文字會跑位到左上角基準點，
+   播完才跳回正確位置。 */
 .door-hint-label.appearing {
-  animation: doorHintLabelAppear 0.4s 0.35s ease-out both;
+  animation: doorHintLabelAppear 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes doorHintLabelAppear {
-  0%   { clip-path: inset(0 100% 0 0); }
-  100% { clip-path: inset(0 0% 0 0); }
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4); filter: blur(6px); }
+  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.08); filter: blur(0px); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0px); }
 }
-/* ⚡ 葉子改成「不顯示實心葉子，只用葉形當裁切遮罩」：
-   .door-hint-leaf-mask 用跟原本一樣的 border-radius 裁出葉子輪廓，
-   但本身不上色（透明），只靠 overflow:hidden 限制內部亮光只能在
-   葉形範圍內顯示。.door-hint-leaf-sweep 是一道會左右移動的亮光，
-   從遮罩左側外面開始，往右刷過整個葉形範圍（中段亮光寬度涵蓋整個
-   葉子時，會看到完整的葉子形狀被點亮），刷過去之後繼續往右移出，
-   葉子形狀又恢復看不見——整體是「一閃即過」的效果，不是常駐的實心
-   葉子。跟文字一起靠外層 .door-hint-root 的 opacity 切換來顯示/
-   隱藏（見 setDoorHintVisible），一起出現、一起消失。
-   全程只動 opacity/transform，GPU合成，一次性播放，播完就停
-   （forwards），不會反覆重播（要重播由 triggerDoorHintAppear()
-   統一觸發）。 */
+/* ⚡ 葉子改成「從左上角生長」出現：錨點鎖定在葉子自己方塊的左上角
+   （transform-origin: top left），從幾乎看不見的小點（scale 0.01）
+   往右下角長開，帶一點過衝的彈性張力（80%時scale到1.05再收回1），
+   像新芽從根部長出來的感覺。跟文字一起靠外層 .door-hint-root 的
+   opacity 切換來顯示/隱藏（見 setDoorHintVisible），一起出現、
+   一起消失。全程只動 opacity/transform/filter，GPU合成，一次性
+   播放，播完就停在完全展開的狀態（forwards），不會反覆重播
+   （要重播由 triggerDoorHintAppear() 統一觸發）。 */
 .door-hint-leaf-wrap {
   position: absolute;
   left: 50%;
@@ -3425,47 +3412,47 @@ doorHintStyleTag.textContent = `
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
-.door-hint-leaf-mask {
+/* ⚡ 只負責旋轉，用「預設的正中央」當軸心，這樣旋轉完整個盒子還是
+   穩穩地在 wrap 的正中央，跟文字的置中基準點對齊。把旋轉跟縮放分成
+   獨立的層，是為了讓下面 .door-hint-leaf 可以放心用「左上角」當縮放
+   基準（做出從角落長出來的效果），不會因為兩者共用同一個
+   transform-origin 而讓旋轉也跟著偏移，導致葉子最終定型的位置跟
+   文字對不齊。 */
+.door-hint-leaf-rotate {
   position: absolute;
   inset: 0;
-  border-radius: 0% 100% 0% 100%; /* 裁出葉子輪廓 */
-  overflow: hidden; /* 內部亮光只能在葉形範圍內顯示 */
-  transform: rotate(-20deg); /* 固定角度，軸心是預設正中央，跟文字置中基準點對齊 */
-  filter: blur(3px); /* ⚡ 加深模糊（原本1.5px），邊緣暈開更明顯，發光感更強 */
+  transform: rotate(-20deg); /* 固定角度，軸心是預設的正中央（50% 50%） */
 }
-.door-hint-leaf-sweep {
+.door-hint-leaf {
   position: absolute;
-  top: -30%;
-  left: -60%;
-  width: 55%;   /* 亮光帶的寬度，大約是葉形寬度的一半多一點，中段移動到中間時剛好蓋滿整個葉形 */
-  height: 160%;
-  /* ⚡ 改成黃綠漸層色系：從透明的黃綠 → 中心接近奶油黃白的最亮點
-     → 深一點的黃綠 → 透明，掃過去時是暖色調的黃綠光，而不是原本
-     偏冷的白綠色。 */
-  background: linear-gradient(100deg,
-    rgba(190,242,100,0) 0%,
-    rgba(190,242,100,0.9) 35%,
-    rgb(221, 254, 195) 50%,
-    rgba(163,190,20,0.9) 65%,
-    rgba(190,242,100,0) 100%);
-  transform: translateX(-100%);
+  inset: 0;
+  background: linear-gradient(135deg, #86efac, #16a34a);
+  border-radius: 0% 100% 0% 100%;
   opacity: 0;
-}
-.door-hint-leaf-wrap.leaf-playing .door-hint-leaf-sweep {
-  animation: doorHintLeafSweep 0.9s ease-in-out forwards;
-}
-@keyframes doorHintLeafSweep {
-  /* ⚡ filter: brightness(...) 疊加在遮罩本身的模糊之上，中段(50%)
-     亮度明顯提升，配合文字動畫的 0.45s 延遲（見上面
-     doorHintLabelAppear），文字剛好在這個「整片葉子最亮」的瞬間出現。 */
-  0%   { transform: translateX(-100%); opacity: 0; filter: brightness(1); }   /* 一開始在遮罩左側外面，看不到 */
-  8%   { opacity: 1; filter: brightness(1); }
-  45%  { opacity: 1; filter: brightness(1.9); }   /* 亮光帶剛好掃到中間，寬度涵蓋整個葉形，明顯更亮 */
-  75%  { opacity: 1; filter: brightness(1); }
-  100% { transform: translateX(220%); opacity: 0; filter: brightness(1); }   /* 移出遮罩右側外面，葉子恢復看不見 */
-}
 
-/* ⚡ 飄移層：跟葉子的遮罩/亮光層是分開的獨立層級，這一層要同時包住
+  /* 初始狀態：整體縮小到接近 0——這裡只剩縮放，旋轉已經交給外層
+     .door-hint-leaf-rotate 處理，不會互相干擾。 */
+  transform: scale(0.01);
+
+  box-shadow: 0 0 10px rgba(134,239,172,0.95), 0 0 22px rgba(22,163,74,0.7);
+  will-change: transform, opacity, filter;
+  transform-origin: top left; /* 鎖定左上角為生長根部——現在只影響縮放，不會連帶影響旋轉軸心 */
+}
+.door-hint-leaf-wrap.leaf-playing .door-hint-leaf {
+  animation: doorHintLeafOpen 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes doorHintLeafOpen {
+  /* 0% ~ 30%：從左上根部微小芽點開始，稍微亮光預備 */
+  0%   { opacity: 1; transform: scale(0.01); filter: brightness(1.7); }
+  30%  { opacity: 1; transform: scale(0.05); filter: brightness(1.7); }
+
+  /* 80%：往右下長出，帶有輕微彈性張力 (1.05) */
+  80%  { opacity: 1; transform: scale(1.05); filter: brightness(1.1); }
+
+  /* 100%：完美伸展定位，跟旋轉後的盒子中心（也就是文字置中的基準點）對齊 */
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+/* ⚡ 飄移層：跟葉子的縮放/旋轉層是分開的獨立層級，這一層要同時包住
    「葉子」跟「文字」兩個元素（見 createDoorHint），才能讓兩者一起
    飄移，而不是只有葉子自己在動、文字留在原地不動。
    position:absolute; inset:0 讓這層的大小、位置完全比照
@@ -3489,23 +3476,22 @@ doorHintStyleTag.textContent = `
 `;
 document.head.appendChild(doorHintStyleTag);
 
-// 建立葉子 DOM：wrap（定位錨點）→ mask（葉形裁切遮罩，固定旋轉角度）
-// → sweep（左右移動的亮光帶）。不再有實心葉子本體，只有裁切遮罩+
-// 移動中的亮光，兩層各自獨立管理座標基準，不會互相干擾。飄移動畫不在
-// 這裡，是在更外層的 .door-hint-drift-group（見 createDoorHint），
-// 同時包住葉子跟文字，兩者才會一起飄。
+// 建立葉子 DOM：wrap（定位錨點）→ rotate（固定旋轉角度，軸心在正中央）
+// → leaf（實際形狀，只負責從左上角縮放生長），三層各自獨立管理座標基準，
+// 不會互相干擾。飄移動畫不在這裡，是在更外層的 .door-hint-drift-group
+// （見 createDoorHint），同時包住葉子跟文字，兩者才會一起飄。
 function buildDoorHintLeaf() {
   const wrap = document.createElement('div');
   wrap.className = 'door-hint-leaf-wrap';
 
-  const mask = document.createElement('div');
-  mask.className = 'door-hint-leaf-mask';
+  const rotateLayer = document.createElement('div');
+  rotateLayer.className = 'door-hint-leaf-rotate';
 
-  const sweep = document.createElement('div');
-  sweep.className = 'door-hint-leaf-sweep';
+  const leaf = document.createElement('div');
+  leaf.className = 'door-hint-leaf';
 
-  mask.appendChild(sweep);
-  wrap.appendChild(mask);
+  rotateLayer.appendChild(leaf);
+  wrap.appendChild(rotateLayer);
 
   return wrap;
 }
@@ -3542,7 +3528,7 @@ function createDoorHint(config) {
   wrapper.appendChild(root);
 
   doorHintInstances[config.name] = {
-    wrapper, root, label, leafWrap, driftGroup, glow, cssObject: null,
+    wrapper, root, label, leafWrap, driftGroup, cssObject: null,
     offsetX: config.offsetX || 0, isVisible: false,
   };
 }
@@ -3593,13 +3579,6 @@ function triggerDoorHintAppear(device) {
   hint.driftGroup.classList.remove('drifting');
   void hint.driftGroup.offsetWidth;
   hint.driftGroup.classList.add('drifting');
-
-  // ⚡ 光暈跟葉子、文字用同一個觸發時機一起重播，才不會出現「靠近的
-  // 瞬間光暈其實已經跑到呼吸律動一半」的不同步感（見上面
-  // .door-hint-glow 的說明）。
-  hint.glow.classList.remove('glowing');
-  void hint.glow.offsetWidth;
-  hint.glow.classList.add('glowing');
 }
 
 // 顯示/隱藏指定裝置的門提示；從隱藏變顯示的那一刻（rising edge）
