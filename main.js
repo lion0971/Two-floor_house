@@ -3307,7 +3307,7 @@ const DOOR_HINT_DEVICES = [
   { name: 'door_livingroom', offsetX: 0.8 },
   { name: 'kit_sliding_door', offsetX: 0 }, // ⚡ 先給0，之後看實際畫面偏移多少再調整
 ];
-const DOOR_HINT_RADIUS = 3.5;              // 靠近幾公尺內彈出提示
+const DOOR_HINT_RADIUS = 3;              // 靠近幾公尺內彈出提示
 const DOOR_HINT_HEIGHT_OFFSET = 0.4;     // 相對於門本身往上偏移多少
 
 let doorHintSeen = false; // ⚡ 共用旗標：只要按過「任一扇」門，之後所有門都不再顯示提示
@@ -3398,7 +3398,7 @@ doorHintStyleTag.textContent = `
    （forwards）。要重播必須由 triggerDoorHintAppear() 主動移除
    再加回 class，是標準的CSS動畫重播技巧。 */
 .door-hint-label.appearing {
-  animation: doorHintLabelAppear 0.4s 0.35s ease-out both;
+  animation: doorHintLabelAppear 0.5s 0.45s ease-out both;
 }
 @keyframes doorHintLabelAppear {
   0%   { clip-path: inset(0 100% 0 0); }
@@ -3445,7 +3445,7 @@ doorHintStyleTag.textContent = `
   background: linear-gradient(100deg,
     rgba(190,242,100,0) 0%,
     rgba(190,242,100,0.9) 35%,
-    rgb(221, 254, 195) 50%,
+    rgba(254,249,195,1) 50%,
     rgba(163,190,20,0.9) 65%,
     rgba(190,242,100,0) 100%);
   transform: translateX(-100%);
@@ -3460,11 +3460,10 @@ doorHintStyleTag.textContent = `
      doorHintLabelAppear），文字剛好在這個「整片葉子最亮」的瞬間出現。 */
   0%   { transform: translateX(-100%); opacity: 0; filter: brightness(1); }   /* 一開始在遮罩左側外面，看不到 */
   8%   { opacity: 1; filter: brightness(1); }
-  45%  { opacity: 1; filter: brightness(1.9); }   /* 亮光帶剛好掃到中間，寬度涵蓋整個葉形，明顯更亮 */
-  75%  { opacity: 1; filter: brightness(1); }
+  50%  { opacity: 1; filter: brightness(1.9); }   /* 亮光帶剛好掃到中間，寬度涵蓋整個葉形，明顯更亮 */
+  92%  { opacity: 1; filter: brightness(1); }
   100% { transform: translateX(220%); opacity: 0; filter: brightness(1); }   /* 移出遮罩右側外面，葉子恢復看不見 */
 }
-
 /* ⚡ 飄移層：跟葉子的遮罩/亮光層是分開的獨立層級，這一層要同時包住
    「葉子」跟「文字」兩個元素（見 createDoorHint），才能讓兩者一起
    飄移，而不是只有葉子自己在動、文字留在原地不動。
