@@ -3307,7 +3307,7 @@ const DOOR_HINT_DEVICES = [
   { name: 'door_livingroom', offsetX: 0.8 },
   { name: 'kit_sliding_door', offsetX: 0 }, // ⚡ 先給0，之後看實際畫面偏移多少再調整
 ];
-const DOOR_HINT_RADIUS = 3.5;              // 靠近幾公尺內彈出提示
+const DOOR_HINT_RADIUS = 4;              // 靠近幾公尺內彈出提示
 const DOOR_HINT_HEIGHT_OFFSET = 0.4;     // 相對於門本身往上偏移多少
 
 let doorHintSeen = false; // ⚡ 共用旗標：只要按過「任一扇」門，之後所有門都不再顯示提示
@@ -3444,15 +3444,15 @@ doorHintStyleTag.textContent = `
      偏冷的白綠色。 */
   background: linear-gradient(100deg,
     rgba(190,242,100,0) 0%,
-    rgb(204, 242, 100) 35%,
-    rgb(232, 254, 195) 50%,
-    rgb(153, 190, 20) 65%,
+    rgba(190,242,100,0.9) 35%,
+    rgba(254,249,195,1) 50%,
+    rgba(163,190,20,0.9) 65%,
     rgba(190,242,100,0) 100%);
   transform: translateX(-100%);
   opacity: 0;
 }
 .door-hint-leaf-wrap.leaf-playing .door-hint-leaf-sweep {
-  animation: doorHintLeafSweep 0.8s ease-in-out forwards;
+  animation: doorHintLeafSweep 0.9s ease-in-out forwards;
 }
 @keyframes doorHintLeafSweep {
   /* ⚡ filter: brightness(...) 疊加在遮罩本身的模糊之上，中段(50%)
