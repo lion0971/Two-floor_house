@@ -3412,12 +3412,30 @@ doorHintStyleTag.textContent = `
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
-/* ⚡ 只負責旋轉，用「預設的正中央」當軸心，這樣旋轉完整個盒子還是
-   穩穩地在 wrap 的正中央，跟文字的置中基準點對齊。把旋轉跟縮放分成
-   獨立的層，是為了讓下面 .door-hint-leaf 可以放心用「左上角」當縮放
-   基準（做出從角落長出來的效果），不會因為兩者共用同一個
-   transform-origin 而讓旋轉也跟著偏移，導致葉子最終定型的位置跟
-   文字對不齊。 */
+/* ⚡ 新增這一層：只負責旋轉，用「預設的正中央」當軸心，這樣旋轉完
+   整個盒子還是穩穩地在 wrap 的正中央，跟文字的置中基準點對齊。
+   把旋轉跟縮放（以及飄移）分成獨立的層，是為了讓下面 .door-hint-leaf 可以放心用
+   「左上角」當縮放基準（做出從角落長出來的效果），不會因為兩者共用
+   同一個 transform-origin 而讓旋轉也跟著偏移，導致葉子最終定型的
+   位置跟文字對不齊。 */
+/* ⚡ 新增這一層：只負責持續的「飄移」擺動——輕微上下位移 + 小角度
+   搖擺，像葉子在空氣中緩緩漂浮的感覺。跟旋轉層(.door-hint-leaf-rotate)、
+   縮放層(.door-hint-leaf)分開放在獨立的一層，三者互不干擾transform，
+   不用像文字動畫那樣每個keyframe都要重複寫其他層的transform。
+   只動 transform，GPU合成，infinite 持續播放，但只有translateY+rotate
+   這種輕量運算，加上裝置數量少（目前2個），成本可忽略，跟光暈呼吸
+   律動（doorHintGlowBreathe）是同一種等級的開銷。 */
+.door-hint-leaf-drift {
+  position: absolute;
+  inset: 0;
+}
+.door-hint-leaf-wrap.leaf-playing .door-hint-leaf-drift {
+  animation: doorHintLeafDrift 3.2s ease-in-out infinite;
+}
+@keyframes doorHintLeafDrift {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-4px) rotate(2deg); }
+}
 .door-hint-leaf-rotate {
   position: absolute;
   inset: 0;
@@ -3452,37 +3470,18 @@ doorHintStyleTag.textContent = `
   /* 100%：完美伸展定位，跟旋轉後的盒子中心（也就是文字置中的基準點）對齊 */
   100% { opacity: 1; transform: scale(1); filter: brightness(1); }
 }
-/* ⚡ 飄移層：跟葉子的縮放/旋轉層是分開的獨立層級，這一層要同時包住
-   「葉子」跟「文字」兩個元素（見 createDoorHint），才能讓兩者一起
-   飄移，而不是只有葉子自己在動、文字留在原地不動。
-   position:absolute; inset:0 讓這層的大小、位置完全比照
-   .door-hint-root，裡面的葉子/文字原本用 left:50%/top:50% 做的
-   置中定位，換算基準點還是一樣（因為套用 transform 動畫後，這層
-   會變成子元素 position:absolute 的新定位基準，但兩層的大小、
-   起始位置完全相同，換算結果不變，不會跳位）。
-   只動 transform，GPU合成，infinite 持續播放，成本可忽略，跟光暈
-   呼吸律動（doorHintGlowBreathe）是同一種等級的開銷。 */
-.door-hint-drift-group {
-  position: absolute;
-  inset: 0;
-}
-.door-hint-drift-group.drifting {
-  animation: doorHintLeafDrift 3.2s ease-in-out infinite;
-}
-@keyframes doorHintLeafDrift {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50%      { transform: translateY(-4px) rotate(2deg); }
-}
 `;
 document.head.appendChild(doorHintStyleTag);
 
-// 建立葉子 DOM：wrap（定位錨點）→ rotate（固定旋轉角度，軸心在正中央）
-// → leaf（實際形狀，只負責從左上角縮放生長），三層各自獨立管理座標基準，
-// 不會互相干擾。飄移動畫不在這裡，是在更外層的 .door-hint-drift-group
-// （見 createDoorHint），同時包住葉子跟文字，兩者才會一起飄。
+// 建立葉子 DOM：wrap（定位錨點）→ drift（持續飄移擺動）→ rotate（固定
+// 旋轉角度，軸心在正中央）→ leaf（實際形狀，只負責從左上角縮放生長），
+// 四層各自獨立管理座標基準，不會互相干擾。
 function buildDoorHintLeaf() {
   const wrap = document.createElement('div');
   wrap.className = 'door-hint-leaf-wrap';
+
+  const drift = document.createElement('div');
+  drift.className = 'door-hint-leaf-drift';
 
   const rotateLayer = document.createElement('div');
   rotateLayer.className = 'door-hint-leaf-rotate';
@@ -3491,7 +3490,8 @@ function buildDoorHintLeaf() {
   leaf.className = 'door-hint-leaf';
 
   rotateLayer.appendChild(leaf);
-  wrap.appendChild(rotateLayer);
+  drift.appendChild(rotateLayer);
+  wrap.appendChild(drift);
 
   return wrap;
 }
@@ -3508,27 +3508,19 @@ function createDoorHint(config) {
   const glow = document.createElement('div');
   glow.className = 'door-hint-glow';
 
-  // ⚡ driftGroup 同時包住葉子跟文字，兩者才會一起飄移（見上面
-  // .door-hint-drift-group 的說明）。光暈(glow)刻意留在外面不跟著飄，
-  // 維持在正中央當背景氛圍光，只有葉子+文字這組「主體」一起漂浮擺動。
-  const driftGroup = document.createElement('div');
-  driftGroup.className = 'door-hint-drift-group';
-
   const leafWrap = buildDoorHintLeaf();
 
   const label = document.createElement('div');
   label.className = 'door-hint-label';
   label.textContent = '按門開關';
 
-  driftGroup.appendChild(leafWrap);
-  driftGroup.appendChild(label);
-
   root.appendChild(glow);
-  root.appendChild(driftGroup);
+  root.appendChild(leafWrap);
+  root.appendChild(label);
   wrapper.appendChild(root);
 
   doorHintInstances[config.name] = {
-    wrapper, root, label, leafWrap, driftGroup, cssObject: null,
+    wrapper, root, label, leafWrap, cssObject: null,
     offsetX: config.offsetX || 0, isVisible: false,
   };
 }
@@ -3570,15 +3562,6 @@ function triggerDoorHintAppear(device) {
   hint.label.classList.remove('appearing');
   void hint.label.offsetWidth;
   hint.label.classList.add('appearing');
-
-  // ⚡ driftGroup 同時包住葉子跟文字，加上 'drifting' 這個 class 之後
-  // 兩者會一起持續飄移（infinite），不需要跟著重播（因為是持續動畫，
-  // 加一次就會一直跑），但還是用同一套「移除再加回」的技巧觸發，
-  // 這樣重新顯示時飄移的擺動相位會重新從頭開始，跟葉子生長動畫的
-  // 節奏對齊，感覺比較一致。
-  hint.driftGroup.classList.remove('drifting');
-  void hint.driftGroup.offsetWidth;
-  hint.driftGroup.classList.add('drifting');
 }
 
 // 顯示/隱藏指定裝置的門提示；從隱藏變顯示的那一刻（rising edge）
