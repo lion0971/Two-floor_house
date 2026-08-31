@@ -3307,7 +3307,7 @@ const DOOR_HINT_DEVICES = [
   { name: 'door_livingroom', offsetX: 0.8 },
   { name: 'kit_sliding_door', offsetX: 0 }, // ⚡ 先給0，之後看實際畫面偏移多少再調整
 ];
-const DOOR_HINT_RADIUS = 3.5;              // 靠近幾公尺內彈出提示
+const DOOR_HINT_RADIUS = 4;              // 靠近幾公尺內彈出提示
 const DOOR_HINT_HEIGHT_OFFSET = 0.4;     // 相對於門本身往上偏移多少
 
 let doorHintSeen = false; // ⚡ 共用旗標：只要按過「任一扇」門，之後所有門都不再顯示提示
@@ -3428,36 +3428,26 @@ doorHintStyleTag.textContent = `
 .door-hint-leaf-mask {
   position: absolute;
   inset: 0;
-  border-radius: 50%; /* ⚡ 改成圓形（原本是葉形），旋轉角度對圓形沒有視覺意義，已拿掉 */
-  overflow: hidden; /* 內部亮光只能在圓形範圍內顯示 */
-  filter: blur(3px); /* 邊緣暈開更明顯，發光感更強 */
-}
-/* ⚡ 新增：常駐的泡泡底色，讓沒有亮光刷過的時候也看得出「這是一顆
-   泡泡」的質感——柔和的藍紫色半透明底 + 左上角一個偏白的高光點，
-   模擬光線打在球面上的反光，是泡泡/玻璃球常見的視覺語言。
-   只在 root 淡入的同時一起淡入（靠外層 opacity 控制），不需要
-   額外的觸發時機。 */
-.door-hint-leaf-bubble-base {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 30% 28%, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0) 24%),
-    radial-gradient(circle at 50% 55%, rgba(196,181,253,0.45) 0%, rgba(147,112,219,0.35) 55%, rgba(126,58,242,0.2) 100%);
+  border-radius: 0% 100% 0% 100%; /* 裁出葉子輪廓 */
+  overflow: hidden; /* 內部亮光只能在葉形範圍內顯示 */
+  transform: rotate(-20deg); /* 固定角度，軸心是預設正中央，跟文字置中基準點對齊 */
+  filter: blur(3px); /* ⚡ 加深模糊（原本1.5px），邊緣暈開更明顯，發光感更強 */
 }
 .door-hint-leaf-sweep {
   position: absolute;
   top: -30%;
   left: -60%;
-  width: 55%;   /* 亮光帶的寬度，大約是圓形直徑的一半多一點，中段移動到中間時剛好蓋滿整個圓形 */
+  width: 55%;   /* 亮光帶的寬度，大約是葉形寬度的一半多一點，中段移動到中間時剛好蓋滿整個葉形 */
   height: 160%;
-  /* ⚡ 改成藍紫泡泡色系：從透明的淺藍 → 中心接近白的最亮點
-     → 紫色 → 透明，掃過去時是泡泡表面反光的感覺。 */
+  /* ⚡ 改成黃綠漸層色系：從透明的黃綠 → 中心接近奶油黃白的最亮點
+     → 深一點的黃綠 → 透明，掃過去時是暖色調的黃綠光，而不是原本
+     偏冷的白綠色。 */
   background: linear-gradient(100deg,
-    rgba(147,197,253,0) 0%,
-    rgba(147,197,253,0.9) 35%,
-    rgba(240,235,255,1) 50%,
-    rgba(168,85,247,0.9) 65%,
-    rgba(147,197,253,0) 100%);
+    rgba(190,242,100,0) 0%,
+    rgba(190,242,100,0.9) 35%,
+    rgba(254,249,195,1) 50%,
+    rgba(163,190,20,0.9) 65%,
+    rgba(190,242,100,0) 100%);
   transform: translateX(-100%);
   opacity: 0;
 }
@@ -3510,13 +3500,9 @@ function buildDoorHintLeaf() {
   const mask = document.createElement('div');
   mask.className = 'door-hint-leaf-mask';
 
-  const bubbleBase = document.createElement('div');
-  bubbleBase.className = 'door-hint-leaf-bubble-base';
-
   const sweep = document.createElement('div');
   sweep.className = 'door-hint-leaf-sweep';
 
-  mask.appendChild(bubbleBase); // 先放底色，亮光疊在上面
   mask.appendChild(sweep);
   wrap.appendChild(mask);
 
