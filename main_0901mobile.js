@@ -4471,8 +4471,7 @@ renderer.domElement.addEventListener('click', () => {
   }
 
   // 已鎖定 → raycaster 互動
-  raycaster.setFromCamera(mobileTapNDC || new THREE.Vector2(0, 0), camera);
-  mobileTapNDC = null; // 用過即清除，避免影響下一次滑鼠點擊
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
 
   // 門 click 事件
   const doorIntersects = raycaster.intersectObjects(doorObjects);
@@ -4901,7 +4900,6 @@ window.addEventListener('beforeunload', () => {
 
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 let isTouchMoving = false;
-let mobileTapNDC = null; // ⚡ 記錄手機這次點擊「實際觸碰位置」換算成的標準化裝置座標(-1~1)，讓 click 監聽器改用「手指點哪就判定哪」，而不是永遠用螢幕正中央十字準心。null 代表不是手機觸發的點擊，維持原本桌機十字準心行為。
 let isHoldWalking = false;
 let holdTimer = null;
 
@@ -5013,20 +5011,9 @@ if (isMobile) {
           mobileLock();
           return;
         }
-
-        // ⚡ 改用手指實際觸碰位置換算成 NDC 座標，而不是螢幕正中央，
-        // 讓手機可以直接「手指摸到裝置」就觸發，比對準十字準心直觀。
-        const rect = renderer.domElement.getBoundingClientRect();
-        const tapNDC = new THREE.Vector2(
-          ((touchStartX - rect.left) / rect.width) * 2 - 1,
-          -((touchStartY - rect.top) / rect.height) * 2 + 1
-        );
-
-        raycaster.setFromCamera(tapNDC, camera);
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
         const intersects = raycaster.intersectObjects([...doorObjects, ...interactiveDevices]);
         if (!intersects.length) return;
-
-        mobileTapNDC = tapNDC; // ⚡ 把同一組座標交給等一下觸發的 click 監聽器用，兩處判定才會一致
         const clickEvent = new MouseEvent('click', { bubbles: false });
         renderer.domElement.dispatchEvent(clickEvent);
       }, DOUBLE_TAP_MS);
