@@ -419,52 +419,9 @@ body {
 
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   pointer-events: none;
-  /* ⚡ 桌機維持原本設定：滑鼠鎖定視角時完全點不到，行為不變 */
   z-index: 50;
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
   max-width: 320px;
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  /* ⚡ 新增：收合/展開時的過渡動畫 */
-}
-
-/* ⚡ 新增：只有手機寬度才需要「點擊收合/展開」的互動能力，桌機不受影響 */
-@media (max-width: 768px) {
-  #instructions {
-    pointer-events: auto;
-    cursor: pointer;
-    overflow: hidden;
-  }
-}
-
-/* ⚡ 新增：收合成左下角小按鈕的狀態（只有手機的點擊流程會加上這個 class，見 main.js） */
-#instructions.at-corner {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  max-width: 44px;
-  padding: 0;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ⚡ 新增：收合時把說明內容藏起來。desktop/mobile-instructions 的顯示是用 inline
-   style 控制的（優先權比一般 class 高），這裡要加 !important 才能真正蓋過去 */
-#instructions.at-corner #desktop-instructions,
-#instructions.at-corner #mobile-instructions {
-  display: none !important;
-}
-
-/* ⚡ 新增：收合時顯示的小圖示，展開時不顯示 */
-.instructions-toggle-icon {
-  display: none;
-  font-size: 20px;
-  line-height: 1;
-}
-
-#instructions.at-corner .instructions-toggle-icon {
-  display: block;
 }
 
 #instructions h3 {

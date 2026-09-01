@@ -292,7 +292,7 @@ let isOnStairRail = false;  // 是否正處於「樓梯軌道自走模式」
 let stairHeight = 0;        // 目前在樓梯上的高度（0 ~ totalHeight）
 let stairAngleOffset = 0;   // 進入樓梯當下的角度基準，讓軌道跟實際入口方位對齊
 let stairEntryHeight = 0;   // ⚡ 新增：本次是從哪一端進入的（0=樓下，totalHeight=樓上），
-                             // 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
+// 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
 
 // ⚡ 修正「爬到樓梯另一端時，出口跟真正入口方位角對不上」的問題：
 // 理論上 turns 圈數應該讓終點剛好落在另一端真正的入口角度上，但實際
@@ -887,12 +887,6 @@ const camera = new THREE.PerspectiveCamera(
   0.1, 1000
 );
 camera.position.set(CONFIG.CAMERA.startPos.x, CONFIG.CAMERA.startPos.y, CONFIG.CAMERA.startPos.z);
-// ⚡ 修正手機觸控「往右滑卻變成往上看」的 bug：
-// three.js Object3D.rotation 預設順序是 'XYZ'，但手機觸控那段是直接連續
-// 修改 camera.rotation.y（yaw）跟 camera.rotation.x（pitch）。一旦 pitch
-// 不是 0，'XYZ' 順序會讓 yaw/pitch 兩軸互相耦合，導致水平滑動也會混進
-// 垂直分量、視覺上像是轉錯方向。改成跟 PointerLockControls 內部邏輯一致的
-// 'YXZ' 順序（yaw 永遠繞世界 Y 軸轉，不受目前 pitch 影響），才能讓兩軸完全獨立。
 camera.rotation.order = 'YXZ';
 // ⚡ 新增：套用起始朝向。lookAtPos 原本只是設定檔裡的死資料，沒有任何地方讀取它，
 // 這裡補上 camera.lookAt()，讓進場那一刻的視角朝向真正對齊設定檔指定的目標點。
@@ -1502,17 +1496,6 @@ const loadingScreen = document.getElementById('loading-screen');
 const instructions = document.getElementById('instructions');
 instructions.style.display = 'none'; // ← 新增：下載/載入階段先強制隱藏，避免太早出現
 
-// ⚡ 新增：點擊 instructions 面板本身（不管是展開狀態的大面板，或收合後的小按鈕），
-// 都切換 at-corner class，達到「點開查看／再點收回」的效果。
-// 不用另外判斷 isMobile：CSS 已經用 pointer-events 限定只有手機寬度才能真的點到
-// 這個元素（桌機是 pointer-events: none），所以這段邏輯在桌機等於是死碼、
-// 不會被觸發，兩邊共用同一段程式碼是安全的。
-// stopPropagation 避免這個點擊被誤判成點在 canvas 上，觸發鎖定視角/開關裝置等其他邏輯。
-instructions.addEventListener('click', (e) => {
-  e.stopPropagation();
-  instructions.classList.toggle('at-corner');
-});
-
 // ⚡ 兩個條件都成立才顯示點擊提示：載入動畫完成 + 首頁遮罩已關閉。
 // 不用輪詢，只在「任一條件剛好達成」的那一刻檢查一次，成本可忽略。
 function finishLoading() {
@@ -1522,8 +1505,7 @@ function finishLoading() {
     document.body.appendChild(instructions);
     loadingScreen.style.display = 'none';
     instructions.style.display = ''; // ← 新增：解除隱藏，恢復成 CSS 原本的顯示方式
-    // ⚡ 移除：不要一載入完就收合，改成使用者按下「點擊畫面開始」那一刻才收合
-    // （且只有手機的點擊分支會加上 at-corner，見下方 touchend/tapTimer 段落）
+    instructions.classList.add('at-corner');
 
     composer.render();
     labelRenderer.render(scene, camera);
@@ -4489,7 +4471,6 @@ renderer.domElement.addEventListener('click', () => {
   }
 
   // 已鎖定 → raycaster 互動
-  // ⚡ 手機模式：改用手指實際觸碰的螢幕座標；桌機（mobileTapNDC 為 null）維持原本十字準心
   raycaster.setFromCamera(mobileTapNDC || new THREE.Vector2(0, 0), camera);
   mobileTapNDC = null; // 用過即清除，避免影響下一次滑鼠點擊
 
@@ -4806,9 +4787,6 @@ function animate(nowMs) {
     direction.x = Number(moveLeft) - Number(moveRight);
 
     // ⚡ 效能優化：先判斷是否有輸入，避免無意義的計算
-    // ⚡ 修正手機在樓梯上「無法邊走邊轉彎」的問題：原本走路跟轉頭互斥
-    // （手指一拖曳就判定成滑動，前進立刻失效），拿掉 !isTouchMoving 限制，
-    // 讓長按前進的效果不會被同時發生的拖曳轉頭手勢打斷。
     const hasInput = moveForward || moveBackward || moveLeft || moveRight || isHoldWalking;
 
     if (hasInput) {
@@ -4818,7 +4796,7 @@ function animate(nowMs) {
       if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * moveDelta;
 
       if (isHoldWalking) {
-        velocity.z -= 1.8; // ⚡ 原本 3.0 太快，調小讓手機長按前進的速度更好操控
+        velocity.z -= 1.8;
       }
     }
 
@@ -4923,11 +4901,9 @@ window.addEventListener('beforeunload', () => {
 
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 let isTouchMoving = false;
+let mobileTapNDC = null; // ⚡ 記錄手機這次點擊「實際觸碰位置」換算成的標準化裝置座標(-1~1)，讓 click 監聽器改用「手指點哪就判定哪」，而不是永遠用螢幕正中央十字準心。null 代表不是手機觸發的點擊，維持原本桌機十字準心行為。
 let isHoldWalking = false;
 let holdTimer = null;
-let mobileTapNDC = null; // ⚡ 記錄手機這次點擊「實際觸碰位置」換算成的標準化裝置座標(-1~1)，
-                          // 讓 click 監聽器改用「手指點哪就判定哪」，而不是永遠用螢幕正中央十字準心。
-                          // null 代表不是手機觸發的點擊，維持原本桌機十字準心行為。
 
 if (isMobile) {
   let lastTapTime = 0;
@@ -5035,7 +5011,6 @@ if (isMobile) {
           hideTapPrompt();
           fadeOutBlackCover();
           mobileLock();
-          instructions.classList.add('at-corner'); // ⚡ 只有手機在按下「點擊畫面開始」時才自動收合說明面板
           return;
         }
 
@@ -5048,8 +5023,6 @@ if (isMobile) {
         );
 
         raycaster.setFromCamera(tapNDC, camera);
-        // ⚡ 修正「按門沒反應」的 bug：原本只檢查 interactiveDevices（水龍頭類），
-        // 沒把 doorObjects（門）算進去，導致瞄準門時這裡永遠不會命中、click 就不會被 dispatch。
         const intersects = raycaster.intersectObjects([...doorObjects, ...interactiveDevices]);
         if (!intersects.length) return;
 
@@ -5153,11 +5126,11 @@ function createEndScreenAmbience(container) {
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
     const middleTailConfig = { tailLen: w * 0.93, tailWidth: h * 0.9, tailOverlap: w * 0.2 };
-    const sideTailConfig   = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
+    const sideTailConfig = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
 
     const tailConfigs = [
-      { fork: 0,          ...middleTailConfig }, // 中間直的一片
-      { fork: forkAngle,  ...sideTailConfig },    // 右側
+      { fork: 0, ...middleTailConfig }, // 中間直的一片
+      { fork: forkAngle, ...sideTailConfig },    // 右側
       { fork: -forkAngle, ...sideTailConfig },    // 左側（跟右側共用同一組長寬/overlap數據）
     ];
 
