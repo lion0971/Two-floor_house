@@ -887,6 +887,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1, 1000
 );
 camera.position.set(CONFIG.CAMERA.startPos.x, CONFIG.CAMERA.startPos.y, CONFIG.CAMERA.startPos.z);
+camera.rotation.order = 'YXZ';
 // ⚡ 新增：套用起始朝向。lookAtPos 原本只是設定檔裡的死資料，沒有任何地方讀取它，
 // 這裡補上 camera.lookAt()，讓進場那一刻的視角朝向真正對齊設定檔指定的目標點。
 // 注意：PointerLockControls 是靠滑鼠即時改變 camera 朝向，玩家一移動滑鼠這個朝向就會被覆蓋，
