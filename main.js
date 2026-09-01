@@ -292,7 +292,7 @@ let isOnStairRail = false;  // 是否正處於「樓梯軌道自走模式」
 let stairHeight = 0;        // 目前在樓梯上的高度（0 ~ totalHeight）
 let stairAngleOffset = 0;   // 進入樓梯當下的角度基準，讓軌道跟實際入口方位對齊
 let stairEntryHeight = 0;   // ⚡ 新增：本次是從哪一端進入的（0=樓下，totalHeight=樓上），
-                             // 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
+// 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
 
 // ⚡ 修正「爬到樓梯另一端時，出口跟真正入口方位角對不上」的問題：
 // 理論上 turns 圈數應該讓終點剛好落在另一端真正的入口角度上，但實際
@@ -4974,6 +4974,10 @@ if (isMobile) {
   }, { passive: true });
 
   renderer.domElement.addEventListener('touchend', (e) => {
+    e.preventDefault(); // ⚡ 修正手機「按一下水龍頭馬上自動關」的 bug：
+    // 擋掉瀏覽器在 touchend 後自動補發的原生合成 click（ghost click），
+    // 避免跟下面手動 dispatchEvent 出的 click 疊加成「連續觸發兩次 toggle」，
+    // 造成開 → 立刻又被關掉的假象。
     // 長按停止
     clearTimeout(holdTimer);
     isHoldWalking = false;
@@ -5010,7 +5014,7 @@ if (isMobile) {
         renderer.domElement.dispatchEvent(clickEvent);
       }, DOUBLE_TAP_MS);
     }
-  }, { passive: true });
+  }, { passive: false });
 
   // ── 移動（虛擬搖桿區域）──
   // 手指雙指觸控：兩指同時滑動 → 前後移動
@@ -5105,11 +5109,11 @@ function createEndScreenAmbience(container) {
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
     const middleTailConfig = { tailLen: w * 0.93, tailWidth: h * 0.9, tailOverlap: w * 0.2 };
-    const sideTailConfig   = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
+    const sideTailConfig = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
 
     const tailConfigs = [
-      { fork: 0,          ...middleTailConfig }, // 中間直的一片
-      { fork: forkAngle,  ...sideTailConfig },    // 右側
+      { fork: 0, ...middleTailConfig }, // 中間直的一片
+      { fork: forkAngle, ...sideTailConfig },    // 右側
       { fork: -forkAngle, ...sideTailConfig },    // 左側（跟右側共用同一組長寬/overlap數據）
     ];
 
