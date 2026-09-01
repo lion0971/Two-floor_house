@@ -405,66 +405,109 @@ body {
   position: absolute;
   bottom: 28px;
   left: 28px;
+  width: 280px;
+  /* ⚡ 固定寬度：展開/收合都用同一個尺寸的面板，改用 transform scale 縮放，
+     不要直接動畫 width/height（CSS 沒辦法把 auto 高度平滑補間，
+     會在動畫過程中先瞬間跳成窄長條再變成目標形狀，很突兀） */
   color: #f0f4f8;
 
   /* 效能優化：輕量 Blur 與硬體加速 */
   background: rgba(18, 24, 38, 0.55);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  will-change: transform;
+  will-change: transform, opacity;
 
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
   padding: 18px 22px;
+  box-sizing: border-box;
 
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   pointer-events: none;
   /* ⚡ 桌機維持原本設定：滑鼠鎖定視角時完全點不到，行為不變 */
   z-index: 50;
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-  max-width: 320px;
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  /* ⚡ 新增：收合/展開時的過渡動畫 */
+  transform-origin: bottom left;
+  /* ⚡ 以左下角（收合按鈕所在位置）當縮放基準點，才會「朝按鈕位置放大/縮小」 */
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
 }
 
-/* ⚡ 新增：只有手機寬度才需要「點擊收合/展開」的互動能力，桌機不受影響 */
+/* ⚡ 新增：手機寬度下，面板預設（沒有 .expanded）就整個縮成一個點並隱藏，
+   改由旁邊獨立的 #instructions-fab 顯示成小圓按鈕。桌機不受影響（不會被收合）。 */
 @media (max-width: 768px) {
   #instructions {
     pointer-events: auto;
-    cursor: pointer;
-    overflow: hidden;
+  }
+
+  #instructions:not(.expanded) {
+    transform: scale(0.05);
+    opacity: 0;
+    pointer-events: none;
   }
 }
 
-/* ⚡ 新增：收合成左下角小按鈕的狀態（只有手機的點擊流程會加上這個 class，見 main.js） */
-#instructions.at-corner {
+/* ⚡ 新增：常駐在左下角的收合按鈕（跟面板同一個定位點，尺寸固定 44x44），
+   只有手機寬度才會顯示；展開面板時淡出、收合時淡入。 */
+#instructions-fab {
+  position: absolute;
+  bottom: 28px;
+  left: 28px;
   width: 44px;
   height: 44px;
-  min-width: 44px;
-  max-width: 44px;
-  padding: 0;
   border-radius: 50%;
-  display: flex;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(18, 24, 38, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #f0f4f8;
+  font-size: 20px;
   align-items: center;
   justify-content: center;
-}
-
-/* ⚡ 新增：收合時把說明內容藏起來。desktop/mobile-instructions 的顯示是用 inline
-   style 控制的（優先權比一般 class 高），這裡要加 !important 才能真正蓋過去 */
-#instructions.at-corner #desktop-instructions,
-#instructions.at-corner #mobile-instructions {
-  display: none !important;
-}
-
-/* ⚡ 新增：收合時顯示的小圖示，展開時不顯示 */
-.instructions-toggle-icon {
+  z-index: 50;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  cursor: pointer;
   display: none;
-  font-size: 20px;
-  line-height: 1;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-#instructions.at-corner .instructions-toggle-icon {
-  display: block;
+@media (max-width: 768px) {
+  #instructions-fab {
+    display: flex;
+    pointer-events: auto;
+  }
+}
+
+#instructions-fab.hide {
+  opacity: 0;
+  transform: scale(0.6);
+  pointer-events: none;
+}
+
+/* ⚡ 新增：面板右上角的 ✕ 關閉按鈕，只有手機展開時才出現 */
+.instructions-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #f0f4f8;
+  font-size: 14px;
+  line-height: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  #instructions.expanded .instructions-close-btn {
+    display: flex;
+  }
 }
 
 #instructions h3 {

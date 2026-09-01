@@ -1501,17 +1501,31 @@ const manager = new THREE.LoadingManager();
 const loadingScreen = document.getElementById('loading-screen');
 const instructions = document.getElementById('instructions');
 instructions.style.display = 'none'; // ← 新增：下載/載入階段先強制隱藏，避免太早出現
+instructions.classList.add('expanded'); // ⚡ 新增：預設為展開狀態（下載完成後跟原本一樣完整顯示）
 
-// ⚡ 新增：點擊 instructions 面板本身（不管是展開狀態的大面板，或收合後的小按鈕），
-// 都切換 at-corner class，達到「點開查看／再點收回」的效果。
-// 不用另外判斷 isMobile：CSS 已經用 pointer-events 限定只有手機寬度才能真的點到
-// 這個元素（桌機是 pointer-events: none），所以這段邏輯在桌機等於是死碼、
-// 不會被觸發，兩邊共用同一段程式碼是安全的。
+// ⚡ 新增：手機收合按鈕（左下角常駐小圓鈕）與面板內的 ✕ 關閉按鈕。
+// 這兩個元素要先加進 index.html 的 #instructions 附近，詳見說明。
+const instructionsFab = document.getElementById('instructions-fab');
+const instructionsCloseBtn = document.querySelector('.instructions-close-btn');
+
+// 點收合按鈕 → 展開面板、隱藏收合按鈕
+if (instructionsFab) {
+  instructionsFab.addEventListener('click', (e) => {
+    e.stopPropagation();
+    instructions.classList.add('expanded');
+    instructionsFab.classList.add('hide');
+  });
+}
+
+// 點面板右上角 ✕ → 收合面板、顯示收合按鈕
 // stopPropagation 避免這個點擊被誤判成點在 canvas 上，觸發鎖定視角/開關裝置等其他邏輯。
-instructions.addEventListener('click', (e) => {
-  e.stopPropagation();
-  instructions.classList.toggle('at-corner');
-});
+if (instructionsCloseBtn) {
+  instructionsCloseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    instructions.classList.remove('expanded');
+    if (instructionsFab) instructionsFab.classList.remove('hide');
+  });
+}
 
 // ⚡ 兩個條件都成立才顯示點擊提示：載入動畫完成 + 首頁遮罩已關閉。
 // 不用輪詢，只在「任一條件剛好達成」的那一刻檢查一次，成本可忽略。
@@ -5035,7 +5049,10 @@ if (isMobile) {
           hideTapPrompt();
           fadeOutBlackCover();
           mobileLock();
-          instructions.classList.add('at-corner'); // ⚡ 只有手機在按下「點擊畫面開始」時才自動收合說明面板
+          // ⚡ 只有手機在按下「點擊畫面開始」時才自動收合說明面板：
+          // 移除 expanded（面板縮小消失），並讓左下角的 fab 收合按鈕顯示出來
+          instructions.classList.remove('expanded');
+          if (instructionsFab) instructionsFab.classList.remove('hide');
           return;
         }
 

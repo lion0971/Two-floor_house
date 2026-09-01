@@ -9,7 +9,7 @@
 </head>
 
 <body>
-  <div id="loading-screen">
+    <div id="loading-screen">
     <!-- <video id="loading-video" autoplay loop muted playsinline>
       <source src="./images/intro.mp4" type="video/mp4">
       您的瀏覽器不支援影片標籤。
@@ -27,7 +27,8 @@
       </div>
     </div>
     <div id="instructions">
-      <div class="instructions-toggle-icon">🌿</div> <!-- ⚡ 新增：收合後顯示的小按鈕圖示 -->
+      <!-- ⚡ 新增：面板右上角的 ✕ 關閉按鈕，只有手機展開時才會顯示（見 style.css） -->
+      <button class="instructions-close-btn" aria-label="關閉說明">✕</button>
       <div id="desktop-instructions" style="display: none;">
         <h3>🌿 空間體驗</h3>
         <ul>
@@ -48,6 +49,8 @@
         </ul>
       </div>
     </div>
+    <!-- ⚡ 新增：手機專用的左下角常駐收合按鈕，點擊可展開上方的 #instructions 面板 -->
+    <button id="instructions-fab" aria-label="開啟操作說明">🌿</button>
   </div>
 
   <div id="crosshair"></div>
