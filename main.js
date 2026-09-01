@@ -887,13 +887,6 @@ const camera = new THREE.PerspectiveCamera(
   0.1, 1000
 );
 camera.position.set(CONFIG.CAMERA.startPos.x, CONFIG.CAMERA.startPos.y, CONFIG.CAMERA.startPos.z);
-// ⚡ 修正手機版視角上下顛倒的 bug：
-// camera.rotation 預設用的尤拉角順序是 'XYZ'，但手機觸控邏輯（下方 isMobile 區塊）
-// 是直接改 camera.rotation.x（俯仰）/ camera.rotation.y（左右看），這種第一人稱視角
-// 一定要用 'YXZ' 順序（先算世界座標的左右轉，再算局部座標的上下看），否則俯仰角一接近
-// 上下限（±90°附近）左右一滑就會整個翻轉。電腦版用的 PointerLockControls 內部本來就是
-// 用 'YXZ' 的 quaternion 在算，所以不受影響；這裡把 camera 本身也設成一致的順序即可。
-camera.rotation.order = 'YXZ';
 // ⚡ 新增：套用起始朝向。lookAtPos 原本只是設定檔裡的死資料，沒有任何地方讀取它，
 // 這裡補上 camera.lookAt()，讓進場那一刻的視角朝向真正對齊設定檔指定的目標點。
 // 注意：PointerLockControls 是靠滑鼠即時改變 camera 朝向，玩家一移動滑鼠這個朝向就會被覆蓋，
