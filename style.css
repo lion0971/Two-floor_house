@@ -565,7 +565,7 @@ body {
 }
 
 /* 📱 手機版專屬：放大 #mobile-instructions 的文字與標題 */
-@media (max-width: 768px) {
+/* @media (max-width: 768px) {
 
   /* 外框寬度與內距微調，確保文字放大了也不會擠壓擠滿 */
   #instructions {
@@ -595,7 +595,7 @@ body {
     min-width: 76px;
     /* 字變大後，適度拉寬左側固定寬度 */
   }
-}
+} */
 
 .door-label {
   color: #00ffcc;
