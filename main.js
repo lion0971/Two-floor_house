@@ -1369,7 +1369,11 @@ function updateStaircase(delta) {
   if (!isOnStairRail) return;
 
   // ── 依「摄影机面向 + WASD 意图」算出世界座标移动方向，而非死板的 W=上 S=下 ──
-  const inputZ = Number(moveForward) - Number(moveBackward);
+  // ⚡ 修正手機「長按前進」在樓梯軌道上完全沒反應、爬不上去的 bug：
+  // 手機沒有鍵盤，前進是靠 isHoldWalking（長按觸發）而不是 moveForward，
+  // 但這裡原本只看 moveForward/moveBackward，導致在樓梯軌道模式下
+  // 完全偵測不到手機的移動輸入，inputDir 永遠是 0，stairHeight 卡死不動。
+  const inputZ = Number(moveForward) - Number(moveBackward) + (isHoldWalking && !isTouchMoving ? 1 : 0);
   const inputX = Number(moveRight) - Number(moveLeft);
   let inputDir = 0;
   let outwardAmount = 0; // ⚡ 新增：玩家移動方向裡「朝樓梯中心以外走」的分量，見下方放行條件說明
