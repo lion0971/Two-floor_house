@@ -1373,7 +1373,7 @@ function updateStaircase(delta) {
   // 手機沒有鍵盤，前進是靠 isHoldWalking（長按觸發）而不是 moveForward，
   // 但這裡原本只看 moveForward/moveBackward，導致在樓梯軌道模式下
   // 完全偵測不到手機的移動輸入，inputDir 永遠是 0，stairHeight 卡死不動。
-  const inputZ = Number(moveForward) - Number(moveBackward) + (isHoldWalking && !isTouchMoving ? 1 : 0);
+  const inputZ = Number(moveForward) - Number(moveBackward) + (isHoldWalking ? 1 : 0);
   const inputX = Number(moveRight) - Number(moveLeft);
   let inputDir = 0;
   let outwardAmount = 0; // ⚡ 新增：玩家移動方向裡「朝樓梯中心以外走」的分量，見下方放行條件說明
@@ -4786,7 +4786,7 @@ function animate(nowMs) {
     direction.x = Number(moveLeft) - Number(moveRight);
 
     // ⚡ 效能優化：先判斷是否有輸入，避免無意義的計算
-    const hasInput = moveForward || moveBackward || moveLeft || moveRight || (isHoldWalking && !isTouchMoving);
+    const hasInput = moveForward || moveBackward || moveLeft || moveRight || isHoldWalking;
 
     if (hasInput) {
       direction.normalize();
@@ -4794,7 +4794,7 @@ function animate(nowMs) {
       if (moveForward || moveBackward) velocity.z -= direction.z * 40.0 * moveDelta;
       if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * moveDelta;
 
-      if (isHoldWalking && !isTouchMoving) {
+      if (isHoldWalking) {
         velocity.z -= 3.0;
       }
     }
