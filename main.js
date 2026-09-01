@@ -1534,6 +1534,8 @@ function finishLoading() {
 
   setTimeout(() => {
     document.body.appendChild(instructions);
+    if (instructionsFab) document.body.appendChild(instructionsFab); // ⚡ 修正：instructions-fab 沒跟著搬出 loading-screen，
+    // 導致 loading-screen 隱藏時被一起藏死，按開始/按 X 都看不到左下角按鈕
     loadingScreen.style.display = 'none';
     instructions.style.display = ''; // ← 新增：解除隱藏，恢復成 CSS 原本的顯示方式
     // ⚡ 移除：不要一載入完就收合，改成使用者按下「點擊畫面開始」那一刻才收合
