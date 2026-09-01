@@ -292,7 +292,7 @@ let isOnStairRail = false;  // 是否正處於「樓梯軌道自走模式」
 let stairHeight = 0;        // 目前在樓梯上的高度（0 ~ totalHeight）
 let stairAngleOffset = 0;   // 進入樓梯當下的角度基準，讓軌道跟實際入口方位對齊
 let stairEntryHeight = 0;   // ⚡ 新增：本次是從哪一端進入的（0=樓下，totalHeight=樓上），
-// 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
+                             // 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
 
 // ⚡ 修正「爬到樓梯另一端時，出口跟真正入口方位角對不上」的問題：
 // 理論上 turns 圈數應該讓終點剛好落在另一端真正的入口角度上，但實際
@@ -1379,7 +1379,7 @@ function updateStaircase(delta) {
   // 手機沒有鍵盤，前進是靠 isHoldWalking（長按觸發）而不是 moveForward，
   // 但這裡原本只看 moveForward/moveBackward，導致在樓梯軌道模式下
   // 完全偵測不到手機的移動輸入，inputDir 永遠是 0，stairHeight 卡死不動。
-  const inputZ = Number(moveForward) - Number(moveBackward) + (isHoldWalking ? 1 : 0) - (isHoldBackward ? 1 : 0);
+  const inputZ = Number(moveForward) - Number(moveBackward) + (isHoldWalking ? 1 : 0);
   const inputX = Number(moveRight) - Number(moveLeft);
   let inputDir = 0;
   let outwardAmount = 0; // ⚡ 新增：玩家移動方向裡「朝樓梯中心以外走」的分量，見下方放行條件說明
@@ -4825,18 +4825,16 @@ function animate(nowMs) {
     // ⚡ 修正手機在樓梯上「無法邊走邊轉彎」的問題：原本走路跟轉頭互斥
     // （手指一拖曳就判定成滑動，前進立刻失效），拿掉 !isTouchMoving 限制，
     // 讓長按前進的效果不會被同時發生的拖曳轉頭手勢打斷。
-    const hasInput = moveForward || moveBackward || moveLeft || moveRight || isHoldWalking || isHoldBackward; // ⚡ 加 isHoldBackward
+    const hasInput = moveForward || moveBackward || moveLeft || moveRight || isHoldWalking;
 
     if (hasInput) {
       direction.normalize();
+
       if (moveForward || moveBackward) velocity.z -= direction.z * 40.0 * moveDelta;
       if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * moveDelta;
 
       if (isHoldWalking) {
-        velocity.z -= 1.8;
-      }
-      if (isHoldBackward) {
-        velocity.z += 1.8; // ⚡ 新增：雙指長按後退，速度先跟前進一樣，覺得不順手可以再調數字
+        velocity.z -= 1.8; // ⚡ 原本 3.0 太快，調小讓手機長按前進的速度更好操控
       }
     }
 
@@ -4942,10 +4940,10 @@ window.addEventListener('beforeunload', () => {
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 let isTouchMoving = false;
 let isHoldWalking = false;
-let isHoldBackward = false;   // ⚡ 新增：雙指長按 → 後退
 let holdTimer = null;
-let holdBackwardTimer = null; // ⚡ 新增
-let mobileTapNDC = null; // ⚡ 記錄手機這次點擊「實際觸碰位置」換算成的標準化裝置座標(-1~1)，讓 click 監聽器改用「手指點哪就判定哪」，而不是永遠用螢幕正中央十字準心。null 代表不是手機觸發的點擊，維持原本桌機十字準心行為。
+let mobileTapNDC = null; // ⚡ 記錄手機這次點擊「實際觸碰位置」換算成的標準化裝置座標(-1~1)，
+                          // 讓 click 監聽器改用「手指點哪就判定哪」，而不是永遠用螢幕正中央十字準心。
+                          // null 代表不是手機觸發的點擊，維持原本桌機十字準心行為。
 
 if (isMobile) {
   let lastTapTime = 0;
@@ -4984,17 +4982,6 @@ if (isMobile) {
 
   // ── 視角旋轉（拖曳）──
   renderer.domElement.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      // ⚡ 新增：雙指長按 → 後退。加入第二根手指時，先取消單指前進的判定，
-      // 改成啟動後退計時器，300ms 後（跟單指長按同樣的手感）開始後退。
-      clearTimeout(holdTimer);
-      isHoldWalking = false;
-      holdBackwardTimer = setTimeout(() => {
-        isHoldBackward = true;
-      }, 300);
-      return;
-    }
-
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
     touchStartX = t.clientX;
@@ -5003,8 +4990,9 @@ if (isMobile) {
     lastTouchY = t.clientY;
     isTouchMoving = false;
 
+    // ── 長按計時 ──
     holdTimer = setTimeout(() => {
-      if (!isTouchMoving) isHoldWalking = true;
+      if (!isTouchMoving) isHoldWalking = true; // 沒有在滑動才啟動前進
     }, 300);
   }, { passive: true });
 
@@ -5032,11 +5020,13 @@ if (isMobile) {
   }, { passive: true });
 
   renderer.domElement.addEventListener('touchend', (e) => {
-    e.preventDefault();
+    e.preventDefault(); // ⚡ 修正手機「按一下水龍頭馬上自動關」的 bug：
+    // 擋掉瀏覽器在 touchend 後自動補發的原生合成 click（ghost click），
+    // 避免跟下面手動 dispatchEvent 出的 click 疊加成「連續觸發兩次 toggle」，
+    // 造成開 → 立刻又被關掉的假象。
+    // 長按停止
     clearTimeout(holdTimer);
-    clearTimeout(holdBackwardTimer); // ⚡ 新增
     isHoldWalking = false;
-    isHoldBackward = false;          // ⚡ 新增
     renderer.domElement._prevAvgY = null;
 
     if (isTouchMoving) return; // 滑動不算點擊
@@ -5091,26 +5081,24 @@ if (isMobile) {
 
   // ── 移動（虛擬搖桿區域）──
   // 手指雙指觸控：兩指同時滑動 → 前後移動
-  // renderer.domElement.addEventListener('touchmove', (e) => {
-  //   if (e.touches.length !== 2) return;
-  //   // 雙指向上 → 前進，向下 → 後退
-  //   const avgY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-  //   if (!renderer.domElement._prevAvgY) {
-  //     renderer.domElement._prevAvgY = avgY;
-  //     return;
-  //   }
-  //   const dy = renderer.domElement._prevAvgY - avgY;
-  //   renderer.domElement._prevAvgY = avgY;
-  //   if (Math.abs(dy) > 1) {
-  //     controls.moveForward(dy * 0.02);
-  //   }
-  // }, { passive: true });
+  renderer.domElement.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 2) return;
+    // 雙指向上 → 前進，向下 → 後退
+    const avgY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    if (!renderer.domElement._prevAvgY) {
+      renderer.domElement._prevAvgY = avgY;
+      return;
+    }
+    const dy = renderer.domElement._prevAvgY - avgY;
+    renderer.domElement._prevAvgY = avgY;
+    if (Math.abs(dy) > 1) {
+      controls.moveForward(dy * 0.02);
+    }
+  }, { passive: true });
 
   renderer.domElement.addEventListener('touchcancel', () => {
     clearTimeout(holdTimer);
-    clearTimeout(holdBackwardTimer); // ⚡ 新增
     isHoldWalking = false;
-    isHoldBackward = false;          // ⚡ 新增
   }, { passive: true });
 }
 
@@ -5184,11 +5172,11 @@ function createEndScreenAmbience(container) {
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
     const middleTailConfig = { tailLen: w * 0.93, tailWidth: h * 0.9, tailOverlap: w * 0.2 };
-    const sideTailConfig = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
+    const sideTailConfig   = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
 
     const tailConfigs = [
-      { fork: 0, ...middleTailConfig }, // 中間直的一片
-      { fork: forkAngle, ...sideTailConfig },    // 右側
+      { fork: 0,          ...middleTailConfig }, // 中間直的一片
+      { fork: forkAngle,  ...sideTailConfig },    // 右側
       { fork: -forkAngle, ...sideTailConfig },    // 左側（跟右側共用同一組長寬/overlap數據）
     ];
 
