@@ -5008,7 +5008,7 @@ if (isMobile) {
           return;
         }
         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-        const intersects = raycaster.intersectObjects(interactiveDevices);
+        const intersects = raycaster.intersectObjects([...doorObjects, ...interactiveDevices]);
         if (!intersects.length) return;
         const clickEvent = new MouseEvent('click', { bubbles: false });
         renderer.domElement.dispatchEvent(clickEvent);
