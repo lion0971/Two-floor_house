@@ -547,7 +547,7 @@ body {
   pointer-events: none;
 }
 
-@media (orientation: landscape) {
+@media (max-width: 768px) and (orientation: landscape) {
   .ring-label {
     /* ⚡ 橫式螢幕高度較短，文字放在圓環上方容易被螢幕頂端裁掉，
        改成貼在圓環左側、垂直置中，並儘量貼近圓環（gap 縮小到 4px） */
