@@ -3088,9 +3088,10 @@ function createFilterCard(device) {
     return valueSpan;
   }
 
-  const hourValueEl = makeRemainingTimeLine('時');
-  const minuteValueEl = makeRemainingTimeLine('分');
-  const secondValueEl = makeRemainingTimeLine('秒');
+  // ⚡ 單位改用筆劃較少的英文字母 H/M/S，取代中文「時/分/秒」，手機小螢幕更容易看清楚
+  const hourValueEl = makeRemainingTimeLine('H');
+  const minuteValueEl = makeRemainingTimeLine('M');
+  const secondValueEl = makeRemainingTimeLine('S');
 
   root.appendChild(timeText);
 
