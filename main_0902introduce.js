@@ -292,7 +292,7 @@ let isOnStairRail = false;  // 是否正處於「樓梯軌道自走模式」
 let stairHeight = 0;        // 目前在樓梯上的高度（0 ~ totalHeight）
 let stairAngleOffset = 0;   // 進入樓梯當下的角度基準，讓軌道跟實際入口方位對齊
 let stairEntryHeight = 0;   // ⚡ 新增：本次是從哪一端進入的（0=樓下，totalHeight=樓上），
-                             // 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
+// 給 getStairAngleAtHeight() 判斷該往哪個目標角度做修正
 
 // ⚡ 修正「爬到樓梯另一端時，出口跟真正入口方位角對不上」的問題：
 // 理論上 turns 圈數應該讓終點剛好落在另一端真正的入口角度上，但實際
@@ -1379,8 +1379,7 @@ function updateStaircase(delta) {
   // 手機沒有鍵盤，前進是靠 isHoldWalking（長按觸發）而不是 moveForward，
   // 但這裡原本只看 moveForward/moveBackward，導致在樓梯軌道模式下
   // 完全偵測不到手機的移動輸入，inputDir 永遠是 0，stairHeight 卡死不動。
-  // ⚡ 同理，雙指長按後退（isHoldWalkingBackward）也要算進去，才能在樓梯上長按兩指往下走。
-  const inputZ = Number(moveForward) - Number(moveBackward) + (isHoldWalking ? 1 : 0) - (isHoldWalkingBackward ? 1 : 0);
+  const inputZ = Number(moveForward) - Number(moveBackward) + (isHoldWalking ? 1 : 0) - (isHoldBackward ? 1 : 0);
   const inputX = Number(moveRight) - Number(moveLeft);
   let inputDir = 0;
   let outwardAmount = 0; // ⚡ 新增：玩家移動方向裡「朝樓梯中心以外走」的分量，見下方放行條件說明
@@ -1501,13 +1500,13 @@ const manager = new THREE.LoadingManager();
 
 const loadingScreen = document.getElementById('loading-screen');
 const instructions = document.getElementById('instructions');
-instructions.style.display = 'none'; // ← 新增：下載/載入階段先強制隱藏，避免太早出現
-instructions.classList.add('expanded'); // ⚡ 新增：預設為展開狀態（下載完成後跟原本一樣完整顯示）
+instructions.style.display = 'none';
 
-// ⚡ 新增：手機收合按鈕（左下角常駐小圓鈕）與面板內的 ✕ 關閉按鈕。
-// 這兩個元素要先加進 index.html 的 #instructions 附近，詳見說明。
 const instructionsFab = document.getElementById('instructions-fab');
 const instructionsCloseBtn = document.querySelector('.instructions-close-btn');
+
+instructions.classList.add('expanded'); // ⚡ 預設為展開狀態
+if (instructionsFab) instructionsFab.classList.add('hide'); // ⚡ 同步藏起 fab，避免跟展開的面板疊在一起擋字
 
 // 點收合按鈕 → 展開面板、隱藏收合按鈕
 if (instructionsFab) {
@@ -3024,28 +3023,6 @@ function createFilterCard(device) {
 
   root.appendChild(svg);
 
-  // ⚡ 新增：圓環正上方的標籤文字，讓使用者一眼看出這個倒數環代表「淨水使用剩餘時間」，
-  // 不用等圓心的時/分/秒數字才能猜出用途。
-  const ringLabel = document.createElement('div');
-  ringLabel.textContent = '淨水餘時';
-  Object.assign(ringLabel.style, {
-    position: 'absolute',
-    left: '50%',
-    top: '0',
-    transform: 'translate(-50%, calc(-100% - 6px))', // 貼齊圓環上緣，往上留一點間距（改成直式後高度變高，
-    // 但這裡是用自身高度的 100% 當基準，不用另外調整）
-    writingMode: 'vertical-rl', // ⚡ 改成直式（由右至左直書，符合中文直式閱讀習慣）
-    textOrientation: 'upright', // ⚡ 讓每個中文字維持正立方向，而不是整個字轉90度躺著
-    fontSize: '14px', // ⚡ 原本 11px，放大讓標籤更容易看清楚
-    fontWeight: '600',
-    letterSpacing: '2px', // 直式排列時這個屬性控制的是「字與字之間的垂直間距」，稍微加大讓縱書更好閱讀
-    color: 'rgba(255, 255, 255, 0.85)', // ⚡ 80%~90% 白色不透明度
-    textShadow: '0 0 4px rgba(255, 255, 255, 0.5), 0 0 10px rgba(120, 200, 255, 0.5)', // ⚡ 微發光效果，跟全站其他發光文字（home-glow-text）同色系
-    whiteSpace: 'nowrap',
-    pointerEvents: 'none',
-  });
-  root.appendChild(ringLabel);
-
   // ⚡ 圓心文字改成三行顯示「剩餘」時／分／秒（原本是累積已用時間的單行長字串，
   // 濾心壽命 2000 小時的極限值會變成「1999小時59分59秒」9個字，在 80px 圓環裡
   // 塞不下）。拆成三行、各自固定寬度（時最多4位數、分秒固定2位數），版面不會
@@ -3075,11 +3052,11 @@ function createFilterCard(device) {
       gap: '2px',
     });
     const valueSpan = document.createElement('span');
-    valueSpan.style.fontSize = '13px'; // ⚡ 原本 11px，放大讓數字更容易看清楚
+    valueSpan.style.fontSize = '11px';
     valueSpan.style.fontWeight = '600';
     const unitSpan = document.createElement('span');
     unitSpan.textContent = unitLabel;
-    unitSpan.style.fontSize = '10px'; // ⚡ 原本 8px，跟著數字一起放大
+    unitSpan.style.fontSize = '8px';
     unitSpan.style.fontWeight = '500';
     unitSpan.style.opacity = '0.85';
     line.appendChild(valueSpan);
@@ -4848,19 +4825,18 @@ function animate(nowMs) {
     // ⚡ 修正手機在樓梯上「無法邊走邊轉彎」的問題：原本走路跟轉頭互斥
     // （手指一拖曳就判定成滑動，前進立刻失效），拿掉 !isTouchMoving 限制，
     // 讓長按前進的效果不會被同時發生的拖曳轉頭手勢打斷。
-    const hasInput = moveForward || moveBackward || moveLeft || moveRight || isHoldWalking || isHoldWalkingBackward;
+    const hasInput = moveForward || moveBackward || moveLeft || moveRight || isHoldWalking || isHoldBackward; // ⚡ 加 isHoldBackward
 
     if (hasInput) {
       direction.normalize();
-
       if (moveForward || moveBackward) velocity.z -= direction.z * 40.0 * moveDelta;
       if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * moveDelta;
 
       if (isHoldWalking) {
-        velocity.z -= 1.8; // ⚡ 原本 3.0 太快，調小讓手機長按前進的速度更好操控
+        velocity.z -= 1.8;
       }
-      if (isHoldWalkingBackward) {
-        velocity.z += 1.8; // ⚡ 新增：雙指長按後退，速度跟長按前進對稱
+      if (isHoldBackward) {
+        velocity.z += 1.8; // ⚡ 新增：雙指長按後退，速度先跟前進一樣，覺得不順手可以再調數字
       }
     }
 
@@ -4966,12 +4942,10 @@ window.addEventListener('beforeunload', () => {
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 let isTouchMoving = false;
 let isHoldWalking = false;
-let isHoldWalkingBackward = false; // ⚡ 新增：雙指長按 → 後退
+let isHoldBackward = false;   // ⚡ 新增：雙指長按 → 後退
 let holdTimer = null;
-let holdTimerTwo = null; // ⚡ 新增：雙指長按後退用的計時器
-let mobileTapNDC = null; // ⚡ 記錄手機這次點擊「實際觸碰位置」換算成的標準化裝置座標(-1~1)，
-                          // 讓 click 監聽器改用「手指點哪就判定哪」，而不是永遠用螢幕正中央十字準心。
-                          // null 代表不是手機觸發的點擊，維持原本桌機十字準心行為。
+let holdBackwardTimer = null; // ⚡ 新增
+let mobileTapNDC = null; // ⚡ 記錄手機這次點擊「實際觸碰位置」換算成的標準化裝置座標(-1~1)，讓 click 監聽器改用「手指點哪就判定哪」，而不是永遠用螢幕正中央十字準心。null 代表不是手機觸發的點擊，維持原本桌機十字準心行為。
 
 if (isMobile) {
   let lastTapTime = 0;
@@ -5008,18 +4982,19 @@ if (isMobile) {
     configurable: true,
   });
 
-  // ── 視角旋轉（拖曳）／長按前進／雙指長按後退 ──
+  // ── 視角旋轉（拖曳）──
   renderer.domElement.addEventListener('touchstart', (e) => {
     if (e.touches.length === 2) {
-      // ⚡ 新增：雙指按住 → 長按後退（取代原本雙指上下拖曳算距離的方式，更單純）
-      // 先取消可能已經在跑的單指長按前進，避免兩者同時生效
+      // ⚡ 新增：雙指長按 → 後退。加入第二根手指時，先取消單指前進的判定，
+      // 改成啟動後退計時器，300ms 後（跟單指長按同樣的手感）開始後退。
       clearTimeout(holdTimer);
       isHoldWalking = false;
-      holdTimerTwo = setTimeout(() => {
-        isHoldWalkingBackward = true;
+      holdBackwardTimer = setTimeout(() => {
+        isHoldBackward = true;
       }, 300);
       return;
     }
+
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
     touchStartX = t.clientX;
@@ -5028,9 +5003,8 @@ if (isMobile) {
     lastTouchY = t.clientY;
     isTouchMoving = false;
 
-    // ── 長按計時 ──
     holdTimer = setTimeout(() => {
-      if (!isTouchMoving) isHoldWalking = true; // 沒有在滑動才啟動前進
+      if (!isTouchMoving) isHoldWalking = true;
     }, 300);
   }, { passive: true });
 
@@ -5058,20 +5032,12 @@ if (isMobile) {
   }, { passive: true });
 
   renderer.domElement.addEventListener('touchend', (e) => {
-    e.preventDefault(); // ⚡ 修正手機「按一下水龍頭馬上自動關」的 bug：
-    // 擋掉瀏覽器在 touchend 後自動補發的原生合成 click（ghost click），
-    // 避免跟下面手動 dispatchEvent 出的 click 疊加成「連續觸發兩次 toggle」，
-    // 造成開 → 立刻又被關掉的假象。
-    // 長按停止（不管剩幾根手指，先把前進/後退都停掉，避免手指數變化時卡住殘留狀態）
+    e.preventDefault();
     clearTimeout(holdTimer);
-    clearTimeout(holdTimerTwo);
+    clearTimeout(holdBackwardTimer); // ⚡ 新增
     isHoldWalking = false;
-    isHoldWalkingBackward = false;
+    isHoldBackward = false;          // ⚡ 新增
     renderer.domElement._prevAvgY = null;
-
-    // ⚡ 新增：只有「所有手指都離開螢幕」時才處理單擊/雙擊判斷，
-    // 避免雙指長按後退鬆開其中一指（畫面上還剩一指）時被誤判成一次點擊
-    if (e.touches.length !== 0) return;
 
     if (isTouchMoving) return; // 滑動不算點擊
 
@@ -5123,11 +5089,28 @@ if (isMobile) {
     }
   }, { passive: false });
 
+  // ── 移動（虛擬搖桿區域）──
+  // 手指雙指觸控：兩指同時滑動 → 前後移動
+  // renderer.domElement.addEventListener('touchmove', (e) => {
+  //   if (e.touches.length !== 2) return;
+  //   // 雙指向上 → 前進，向下 → 後退
+  //   const avgY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+  //   if (!renderer.domElement._prevAvgY) {
+  //     renderer.domElement._prevAvgY = avgY;
+  //     return;
+  //   }
+  //   const dy = renderer.domElement._prevAvgY - avgY;
+  //   renderer.domElement._prevAvgY = avgY;
+  //   if (Math.abs(dy) > 1) {
+  //     controls.moveForward(dy * 0.02);
+  //   }
+  // }, { passive: true });
+
   renderer.domElement.addEventListener('touchcancel', () => {
     clearTimeout(holdTimer);
-    clearTimeout(holdTimerTwo);
+    clearTimeout(holdBackwardTimer); // ⚡ 新增
     isHoldWalking = false;
-    isHoldWalkingBackward = false;
+    isHoldBackward = false;          // ⚡ 新增
   }, { passive: true });
 }
 
@@ -5201,11 +5184,11 @@ function createEndScreenAmbience(container) {
     const forkAngle = 24; // 左右兩片的分岔角度（度），數字越大叉開越開
 
     const middleTailConfig = { tailLen: w * 0.93, tailWidth: h * 0.9, tailOverlap: w * 0.2 };
-    const sideTailConfig   = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
+    const sideTailConfig = { tailLen: w * 0.7, tailWidth: h * 0.7, tailOverlap: w * 0.1 };
 
     const tailConfigs = [
-      { fork: 0,          ...middleTailConfig }, // 中間直的一片
-      { fork: forkAngle,  ...sideTailConfig },    // 右側
+      { fork: 0, ...middleTailConfig }, // 中間直的一片
+      { fork: forkAngle, ...sideTailConfig },    // 右側
       { fork: -forkAngle, ...sideTailConfig },    // 左側（跟右側共用同一組長寬/overlap數據）
     ];
 

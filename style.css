@@ -564,39 +564,6 @@ body {
   min-width: 68px;
 }
 
-/* 📱 手機版專屬：放大 #mobile-instructions 的文字與標題 */
-/* @media (max-width: 768px) {
-
-  /* 外框寬度與內距微調，確保文字放大了也不會擠壓擠滿 */
-  #instructions {
-    max-width: 280px;
-    /* 面板寬度適度微調 */
-    padding: 16px 20px;
-    /* 調整邊距 */
-  }
-
-  /* 1. 放大標題 (🌿 隨身跨界) */
-  #mobile-instructions h3 {
-    font-size: 17px;
-    /* 預設是 15px，微調至 17px 或更大 */
-  }
-
-  /* 2. 放大內容清單文字 */
-  #mobile-instructions li {
-    font-size: 15px;
-    /* 預設是 13px，加大到 15px */
-    line-height: 1.6;
-    /* 稍微加大行高，避免兩行文字距離太近 */
-  }
-
-  /* 3. 放大前方粗體標題 (例如：觸控視角) */
-  #mobile-instructions li strong {
-    font-size: 15px;
-    min-width: 76px;
-    /* 字變大後，適度拉寬左側固定寬度 */
-  }
-} */
-
 .door-label {
   color: #00ffcc;
   font-family: sans-serif;
