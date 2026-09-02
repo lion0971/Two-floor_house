@@ -2867,7 +2867,7 @@ const FILTER_CARD_HEIGHT_OFFSET = 0.2;
 const FILTER_CARD_GAP = 14;
 
 const filterUICards = {}; // { [device]: { wrapper, offsetWrapper, root, cssObject, fg, percentText, hourLine, hideTimer } }
-const RING_RADIUS = 26;
+const RING_RADIUS = 30; // ⚡ 原本 26，放大讓中央文字（放大字級後）有足夠淨空，不會壓到圓環內緣
 const RING_CIRC = 2 * Math.PI * RING_RADIUS;
 // ── 圓環五色分區設定：0~100 對應「已使用百分比」，數字越大代表濾心越接近該換 ──
 // ⚡ 恢復5段：0~25藍、25~50綠、50~75黃、75~90橘、90~100紅。
@@ -2959,7 +2959,7 @@ function createFilterCard(device) {
     position: 'absolute',
     left: '50%',
     bottom: '0',
-    marginLeft: '-40px',  // 抵銷圓環寬度(約68px)的一半，橫向置中對齊錠點
+    marginLeft: '-46px',  // ⚡ 圓環放大到92px後，抵銷量同步從-40px調整為-46px（92/2），橫向置中對齊錠點
     marginBottom: '10px',
     opacity: '0',
     transformOrigin: 'center center',
@@ -2969,14 +2969,14 @@ function createFilterCard(device) {
   root.classList.add('filter-card-glow'); // ⚡ 新增：加上呼吸光暈動畫（display:none時瀏覽器會自動暫停，零成本
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', '80');
-  svg.setAttribute('height', '80');
-  svg.setAttribute('viewBox', '0 0 80 80');
+  svg.setAttribute('width', '92');
+  svg.setAttribute('height', '92');
+  svg.setAttribute('viewBox', '0 0 92 92');
   svg.style.overflow = 'visible'; // ⚡ 保險：明確允許光暈超出viewBox範圍也不被裁切
 
   // 底環：極暗的輪廓，讓整個圓形看得出來
   const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  bg.setAttribute('cx', '40'); bg.setAttribute('cy', '40'); bg.setAttribute('r', String(RING_RADIUS));
+  bg.setAttribute('cx', '46'); bg.setAttribute('cy', '46'); bg.setAttribute('r', String(RING_RADIUS));
   bg.setAttribute('fill', 'none');
   bg.setAttribute('stroke', 'rgba(255,255,255,0.15)');
   bg.setAttribute('stroke-width', '6');
@@ -2987,7 +2987,7 @@ function createFilterCard(device) {
   // 永遠只呈現一種顏色（跟前景的進度弧同色系，只是較暗），
   // 讓整個圓環在同一時間只透露一個顏色訊號，跨過閾值才整個換色。
   const trackCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  trackCircle.setAttribute('cx', '40'); trackCircle.setAttribute('cy', '40'); trackCircle.setAttribute('r', String(RING_RADIUS));
+  trackCircle.setAttribute('cx', '46'); trackCircle.setAttribute('cy', '46'); trackCircle.setAttribute('r', String(RING_RADIUS));
   trackCircle.setAttribute('fill', 'none');
   trackCircle.setAttribute('stroke-width', '6');
   trackCircle.setAttribute('stroke-dasharray', `${RING_CIRC} 0`); // 固定整圈，不隨用量變化
@@ -2999,14 +2999,14 @@ function createFilterCard(device) {
   // 「filter-ring-glow」去動 opacity/transform，不會逐幀重繪這條線本身，
   // 效能成本最低。dasharray 長度會在 updateFilterUI() 裡跟進度弧同步。
   const haloCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  haloCircle.setAttribute('cx', '40'); haloCircle.setAttribute('cy', '40'); haloCircle.setAttribute('r', String(RING_RADIUS));
+  haloCircle.setAttribute('cx', '46'); haloCircle.setAttribute('cy', '46'); haloCircle.setAttribute('r', String(RING_RADIUS));
   haloCircle.setAttribute('fill', 'none');
   haloCircle.setAttribute('stroke-width', '10'); // 固定粗細，不隨動畫變化
   // ⚡ 改成固定「滿圈」：dasharray = 整個圓周長度 + 0 間隙，
   // 不再跟進度弧的 progressLen 同步，這樣不管濾心用量多少，
   // 光暈永遠環繞整個圓環一圈，而不是只出現在已使用的那一小段。
   haloCircle.setAttribute('stroke-dasharray', `${RING_CIRC} 0`);
-  haloCircle.setAttribute('transform', 'rotate(-90 40 40)');
+  haloCircle.setAttribute('transform', 'rotate(-90 46 46)');
   haloCircle.style.filter = 'blur(4px)'; // 固定模糊值，讓它看起來像光暈而不是一條硬邊線
   haloCircle.classList.add('filter-ring-glow'); // 掛上呼吸動畫（只動 opacity/transform）
   svg.appendChild(haloCircle);
@@ -3014,12 +3014,12 @@ function createFilterCard(device) {
   // ⚡ 新增：進度弧，疊在 halo 之上，維持清晰銳利的邊緣。長度 = 已用百分比，
   // updateFilterUI() 會即時更新它的 dasharray 跟顏色。
   const progressCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  progressCircle.setAttribute('cx', '40'); progressCircle.setAttribute('cy', '40'); progressCircle.setAttribute('r', String(RING_RADIUS));
+  progressCircle.setAttribute('cx', '46'); progressCircle.setAttribute('cy', '46'); progressCircle.setAttribute('r', String(RING_RADIUS));
   progressCircle.setAttribute('fill', 'none');
   progressCircle.setAttribute('stroke-width', '6');
   progressCircle.setAttribute('stroke-linecap', 'round'); // 進度末端圓角，看起來更像進度環
   progressCircle.setAttribute('stroke-dasharray', `0 ${RING_CIRC}`); // 一開始是0，updateFilterUI 會補上實際比例
-  progressCircle.setAttribute('transform', 'rotate(-90 40 40)');
+  progressCircle.setAttribute('transform', 'rotate(-90 46 46)');
   svg.appendChild(progressCircle);
 
   root.appendChild(svg);
