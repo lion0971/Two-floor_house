@@ -531,32 +531,6 @@ body {
   }
 }
 
-/* ==========================================
-   ⏱️ 濾心倒數圓環上的「淨水餘時」標籤
-   直式維持在圓環正上方；橫式螢幕高度有限，容易被裁到看不見，
-   改貼在圓環左側、垂直置中，並儘量貼近圓環。
-   ========================================== */
-.ring-label {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  transform: translate(-50%, calc(-100% - 6px)); /* 貼齊圓環上緣，往上留一點間距 */
-  writing-mode: vertical-rl; /* 直式（由右至左直書），符合中文直式閱讀習慣 */
-  text-orientation: upright; /* 讓每個中文字維持正立方向，而不是整個字轉90度躺著 */
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-@media (orientation: landscape) {
-  .ring-label {
-    /* ⚡ 橫式螢幕高度較短，文字放在圓環上方容易被螢幕頂端裁掉，
-       改成貼在圓環左側、垂直置中，並儘量貼近圓環（gap 縮小到 4px） */
-    left: 0;
-    top: 50%;
-    transform: translate(calc(-100% - 4px), -50%);
-  }
-}
-
 #instructions h3 {
   margin: 0 0 10px 0;
   font-size: 15px;

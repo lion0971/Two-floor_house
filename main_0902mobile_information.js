@@ -3028,13 +3028,21 @@ function createFilterCard(device) {
   // 不用等圓心的時/分/秒數字才能猜出用途。
   const ringLabel = document.createElement('div');
   ringLabel.textContent = '淨水餘時';
-  ringLabel.className = 'ring-label'; // ⚡ 定位改用 CSS class（見 style.css），才能用 @media (orientation) 依橫式/直式切換位置
   Object.assign(ringLabel.style, {
+    position: 'absolute',
+    left: '50%',
+    top: '0',
+    transform: 'translate(-50%, calc(-100% - 6px))', // 貼齊圓環上緣，往上留一點間距（改成直式後高度變高，
+    // 但這裡是用自身高度的 100% 當基準，不用另外調整）
+    writingMode: 'vertical-rl', // ⚡ 改成直式（由右至左直書，符合中文直式閱讀習慣）
+    textOrientation: 'upright', // ⚡ 讓每個中文字維持正立方向，而不是整個字轉90度躺著
     fontSize: '14px', // ⚡ 原本 11px，放大讓標籤更容易看清楚
     fontWeight: '600',
     letterSpacing: '2px', // 直式排列時這個屬性控制的是「字與字之間的垂直間距」，稍微加大讓縱書更好閱讀
     color: 'rgba(255, 255, 255, 0.85)', // ⚡ 80%~90% 白色不透明度
     textShadow: '0 0 4px rgba(255, 255, 255, 0.5), 0 0 10px rgba(120, 200, 255, 0.5)', // ⚡ 微發光效果，跟全站其他發光文字（home-glow-text）同色系
+    whiteSpace: 'nowrap',
+    pointerEvents: 'none',
   });
   root.appendChild(ringLabel);
 
