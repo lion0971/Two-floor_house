@@ -1500,13 +1500,13 @@ const manager = new THREE.LoadingManager();
 
 const loadingScreen = document.getElementById('loading-screen');
 const instructions = document.getElementById('instructions');
-instructions.style.display = 'none'; // ← 新增：下載/載入階段先強制隱藏，避免太早出現
-instructions.classList.add('expanded'); // ⚡ 新增：預設為展開狀態（下載完成後跟原本一樣完整顯示）
+instructions.style.display = 'none';
 
-// ⚡ 新增：手機收合按鈕（左下角常駐小圓鈕）與面板內的 ✕ 關閉按鈕。
-// 這兩個元素要先加進 index.html 的 #instructions 附近，詳見說明。
 const instructionsFab = document.getElementById('instructions-fab');
 const instructionsCloseBtn = document.querySelector('.instructions-close-btn');
+
+instructions.classList.add('expanded'); // ⚡ 預設為展開狀態
+if (instructionsFab) instructionsFab.classList.add('hide'); // ⚡ 同步藏起 fab，避免跟展開的面板疊在一起擋字
 
 // 點收合按鈕 → 展開面板、隱藏收合按鈕
 if (instructionsFab) {
