@@ -3053,15 +3053,7 @@ function createFilterCard(device) {
     textAlign: 'center',
     lineHeight: '1.15',
     whiteSpace: 'nowrap',
-    // ⚡ 拿掉半透明黑底，改用多方向疊加的文字陰影模擬「描邊」效果，
-    // 讓文字邊緣本身就有暗色輪廓，就算壓到圓環的亮部也能維持對比、看得清楚
-    textShadow: `
-      -1px -1px 2px rgba(0,0,0,0.85),
-      1px -1px 2px rgba(0,0,0,0.85),
-      -1px 1px 2px rgba(0,0,0,0.85),
-      1px 1px 2px rgba(0,0,0,0.85),
-      0 2px 4px rgba(0,0,0,0.6)
-    `,
+    textShadow: '0 1px 2px rgba(0,0,0,0.8)',
     pointerEvents: 'none',
   });
 
@@ -3075,23 +3067,23 @@ function createFilterCard(device) {
       gap: '2px',
     });
     const valueSpan = document.createElement('span');
-    valueSpan.style.fontSize = '16px'; // ⚡ 原本 13px，再放大一些讓數字更容易看清楚
-    valueSpan.style.fontWeight = '700'; // ⚡ 原本 600，加粗讓細筆畫的數字在小尺寸下更清楚
+    valueSpan.style.fontSize = '13px'; // ⚡ 原本 11px，放大讓數字更容易看清楚
+    valueSpan.style.fontWeight = '600';
     const unitSpan = document.createElement('span');
     unitSpan.textContent = unitLabel;
-    unitSpan.style.fontSize = '13px'; // ⚡ 原本 10px，跟著數字一起放大
-    unitSpan.style.fontWeight = '600'; // ⚡ 原本 500，同樣加粗
-    unitSpan.style.opacity = '0.9';
+    unitSpan.style.fontSize = '10px'; // ⚡ 原本 8px，跟著數字一起放大
+    unitSpan.style.fontWeight = '500';
+    unitSpan.style.opacity = '0.85';
     line.appendChild(valueSpan);
     line.appendChild(unitSpan);
     timeText.appendChild(line);
     return valueSpan;
   }
 
-  // ⚡ 改回中文「時/分/秒」；配合上面加大字級＋黑底，改善可讀性，不用再靠改成英文縮寫來解決
-  const hourValueEl = makeRemainingTimeLine('時');
-  const minuteValueEl = makeRemainingTimeLine('分');
-  const secondValueEl = makeRemainingTimeLine('秒');
+  // ⚡ 單位改用筆劃較少的英文字母 H/M/S，取代中文「時/分/秒」，手機小螢幕更容易看清楚
+  const hourValueEl = makeRemainingTimeLine('H');
+  const minuteValueEl = makeRemainingTimeLine('M');
+  const secondValueEl = makeRemainingTimeLine('S');
 
   root.appendChild(timeText);
 
