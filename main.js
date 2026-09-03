@@ -4867,10 +4867,10 @@ function animate(nowMs) {
       if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * moveDelta;
 
       if (isHoldWalking) {
-        velocity.z -= 1.8; // ⚡ 原本 3.0 太快，調小讓手機長按前進的速度更好操控
+        velocity.z -= 1.0; // ⚡ 手機前進速度原本 3.0 太快，調小讓手機長按前進的速度更好操控
       }
       if (isHoldWalkingBackward) {
-        velocity.z += 1.8; // ⚡ 新增：雙指長按後退，速度跟長按前進對稱
+        velocity.z += 1.0; // ⚡ 手機後退速度：雙指長按後退，速度跟長按前進對稱
       }
     }
 
