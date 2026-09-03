@@ -3030,7 +3030,7 @@ function createFilterCard(device) {
   ringLabel.textContent = '淨水餘時';
   ringLabel.className = 'ring-label'; // ⚡ 定位改用 CSS class（見 style.css），才能用 @media (orientation) 依橫式/直式切換位置
   Object.assign(ringLabel.style, {
-    fontSize: '14px', // ⚡ 原本 11px，放大讓標籤更容易看清楚
+    fontSize: '16px', // ⚡ 原本 11px，放大讓圓環上方標籤文字更容易看清楚
     fontWeight: '600',
     letterSpacing: '2px', // 直式排列時這個屬性控制的是「字與字之間的垂直間距」，稍微加大讓縱書更好閱讀
     color: 'rgba(255, 255, 255, 0.85)', // ⚡ 80%~90% 白色不透明度
@@ -3084,8 +3084,8 @@ function createFilterCard(device) {
       gap: '2px',
     });
     const valueSpan = document.createElement('span');
-    valueSpan.style.fontSize = '16px'; // ⚡ 原本 13px，再放大一些讓數字更容易看清楚
-    valueSpan.style.fontWeight = '700'; // ⚡ 原本 600，加粗讓細筆畫的數字在小尺寸下更清楚
+    valueSpan.style.fontSize = '16px'; // ⚡ 圓環內數字原本 13px，再放大一些讓數字更容易看清楚
+    valueSpan.style.fontWeight = '700'; // ⚡ 圓環內文字原本 600，加粗讓細筆畫的數字在小尺寸下更清楚
     const unitSpan = document.createElement('span');
     unitSpan.textContent = unitLabel;
     unitSpan.style.fontSize = '13px'; // ⚡ 原本 10px，跟著數字一起放大
