@@ -3034,7 +3034,16 @@ function createFilterCard(device) {
     fontWeight: '600',
     letterSpacing: '2px', // 直式排列時這個屬性控制的是「字與字之間的垂直間距」，稍微加大讓縱書更好閱讀
     color: 'rgba(255, 255, 255, 0.85)', // ⚡ 80%~90% 白色不透明度
-    textShadow: '0 0 4px rgba(255, 255, 255, 0.5), 0 0 10px rgba(120, 200, 255, 0.5)', // ⚡ 微發光效果，跟全站其他發光文字（home-glow-text）同色系
+    // ⚡ 在原本的白光/藍光發光效果之外，再疊加四個方向的深色描邊陰影，
+    // 淡色背景（例如白牆、窗戶透光處）底下文字邊緣也能維持清楚的輪廓
+    textShadow: `
+      0 0 4px rgba(255, 255, 255, 0.5),
+      0 0 10px rgba(120, 200, 255, 0.5),
+      -1px -1px 2px rgba(0,0,0,0.8),
+      1px -1px 2px rgba(0,0,0,0.8),
+      -1px 1px 2px rgba(0,0,0,0.8),
+      1px 1px 2px rgba(0,0,0,0.8)
+    `,
   });
   root.appendChild(ringLabel);
 
