@@ -66,6 +66,9 @@ let moveForward = false, moveBackward = false, moveLeft = false, moveRight = fal
 let prevTime = performance.now() / 1000;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
+const WALK_HOLD_ACCEL = 24; // ⚡ 手機長按前進/後退的加速度（單位跟鍵盤移動的 40.0 一致）。
+// 因為有阻尼 velocity.z -= velocity.z*10*moveDelta，穩定速度約等於「這個數字 ÷ 10」。
+// 想調快/調慢直接改這一個數字即可，不用再手動試「每幀加多少」這種不直覺的寫法。
 const raycaster = new THREE.Raycaster();
 const interactiveDevices = [];
 const doorObjects = [];
@@ -3030,7 +3033,7 @@ function createFilterCard(device) {
   ringLabel.textContent = '淨水餘時';
   ringLabel.className = 'ring-label'; // ⚡ 定位改用 CSS class（見 style.css），才能用 @media (orientation) 依橫式/直式切換位置
   Object.assign(ringLabel.style, {
-    fontSize: '16px', // ⚡ 原本 11px，放大讓圓環上方標籤文字更容易看清楚
+    fontSize: '14px', // ⚡ 原本 11px，放大讓標籤更容易看清楚
     fontWeight: '600',
     letterSpacing: '2px', // 直式排列時這個屬性控制的是「字與字之間的垂直間距」，稍微加大讓縱書更好閱讀
     color: 'rgba(255, 255, 255, 0.85)', // ⚡ 80%~90% 白色不透明度
@@ -3084,8 +3087,8 @@ function createFilterCard(device) {
       gap: '2px',
     });
     const valueSpan = document.createElement('span');
-    valueSpan.style.fontSize = '16px'; // ⚡ 圓環內數字原本 13px，再放大一些讓數字更容易看清楚
-    valueSpan.style.fontWeight = '700'; // ⚡ 圓環內文字原本 600，加粗讓細筆畫的數字在小尺寸下更清楚
+    valueSpan.style.fontSize = '16px'; // ⚡ 原本 13px，再放大一些讓數字更容易看清楚
+    valueSpan.style.fontWeight = '700'; // ⚡ 原本 600，加粗讓細筆畫的數字在小尺寸下更清楚
     const unitSpan = document.createElement('span');
     unitSpan.textContent = unitLabel;
     unitSpan.style.fontSize = '13px'; // ⚡ 原本 10px，跟著數字一起放大
@@ -3401,7 +3404,7 @@ doorHintStyleTag.textContent = `
   transform: translateX(-50%);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 300ms ease-out;
+  transition: opacity 150ms ease-out;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3470,7 +3473,7 @@ doorHintStyleTag.textContent = `
    （forwards）。要重播必須由 triggerDoorHintAppear() 主動移除
    再加回 class，是標準的CSS動畫重播技巧。 */
 .door-hint-label.appearing {
-  animation: doorHintLabelAppear 0.5s 0.45s ease-out both;
+  animation: doorHintLabelAppear 0.12s 0s ease-out both; /* ⚡ 原本0.28s，縮短播放時長，讓文字「完整出現」的速度貼近光暈幾乎瞬間到位的節奏，不會慢半拍 */
 }
 @keyframes doorHintLabelAppear {
   0%   { clip-path: inset(0 100% 0 0); }
@@ -3534,7 +3537,7 @@ doorHintStyleTag.textContent = `
   opacity: 0;
 }
 .door-hint-leaf-wrap.leaf-playing .door-hint-leaf-sweep {
-  animation: doorHintLeafSweep 0.9s ease-in-out forwards;
+  animation: doorHintLeafSweep 0.45s ease-in-out forwards; /* ⚡ 原本 0.9s，加快一倍 */
 }
 @keyframes doorHintLeafSweep {
   /* ⚡ filter: brightness(...) 疊加在遮罩本身的模糊之上，中段(50%)
@@ -4867,10 +4870,10 @@ function animate(nowMs) {
       if (moveLeft || moveRight) velocity.x -= direction.x * 40.0 * moveDelta;
 
       if (isHoldWalking) {
-        velocity.z -= 1.0; // ⚡ 手機前進速度原本 3.0 太快，調小讓手機長按前進的速度更好操控
+        velocity.z -= WALK_HOLD_ACCEL * moveDelta; // ⚡ 修正：原本沒乘 moveDelta，速度會隨畫面更新頻率(FPS)亂飄，數字調再小在高更新率手機上還是偏快
       }
       if (isHoldWalkingBackward) {
-        velocity.z += 1.0; // ⚡ 手機後退速度：雙指長按後退，速度跟長按前進對稱
+        velocity.z += WALK_HOLD_ACCEL * moveDelta; // ⚡ 同上，一併修正
       }
     }
 
