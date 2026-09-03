@@ -553,7 +553,7 @@ body {
        改成貼在圓環左側、垂直置中，並儘量貼近圓環（gap 縮小到 4px） */
     left: 0;
     top: 50%;
-    transform: translate(calc(-100% - 4px), -50%);
+    transform: translate(calc(-100% - 2px), -50%);
   }
 }
 
