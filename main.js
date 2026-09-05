@@ -1523,20 +1523,27 @@ const manager = new THREE.LoadingManager();
 
 const loadingScreen = document.getElementById('loading-screen');
 const instructions = document.getElementById('instructions');
-instructions.style.display = 'none'; // ← 新增：下載/載入階段先強制隱藏，避免太早出現
-instructions.classList.add('expanded'); // ⚡ 新增：預設為展開狀態（下載完成後跟原本一樣完整顯示）
+// ⚡ 修正「下載階段面板/文字提早跑出來」的 bug：不再用 inline style.display 控制隱藏
+// （那個做法依賴這行 JS 要「夠早」執行完，但 main.js 檔案大、下載解析需要時間，
+// JS 執行前瀏覽器會先照 CSS 預設畫面板，造成競賽問題）。改成 CSS 本身預設就是
+// display:none（見 style.css 的 #instructions 規則），JS 只需要在真正準備好時
+// 加上 .ready class 來「顯示」，不用再手動設 style.display 隱藏。
 
 // ⚡ 新增：手機收合按鈕（左下角常駐小圓鈕）與面板內的 ✕ 關閉按鈕。
 // 這兩個元素要先加進 index.html 的 #instructions 附近，詳見說明。
+// fab 同理，CSS 預設就是隱藏（opacity:0），JS 只需要加上 .show 才會顯示。
 const instructionsFab = document.getElementById('instructions-fab');
 const instructionsCloseBtn = document.querySelector('.instructions-close-btn');
+
+instructions.classList.add('expanded'); // ⚡ 預設為展開狀態（下載完成後跟原本一樣完整顯示）
+// 這裡「不」把 fab 加上 .show，維持 CSS 預設的隱藏狀態即可（面板展開時 fab 本來就不該顯示）
 
 // 點收合按鈕 → 展開面板、隱藏收合按鈕
 if (instructionsFab) {
   instructionsFab.addEventListener('click', (e) => {
     e.stopPropagation();
     instructions.classList.add('expanded');
-    instructionsFab.classList.add('hide');
+    instructionsFab.classList.remove('show');
   });
 }
 
@@ -1546,7 +1553,7 @@ if (instructionsCloseBtn) {
   instructionsCloseBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     instructions.classList.remove('expanded');
-    if (instructionsFab) instructionsFab.classList.remove('hide');
+    if (instructionsFab) instructionsFab.classList.add('show');
   });
 }
 
@@ -1560,9 +1567,10 @@ function finishLoading() {
     if (instructionsFab) document.body.appendChild(instructionsFab); // ⚡ 修正：instructions-fab 沒跟著搬出 loading-screen，
     // 導致 loading-screen 隱藏時被一起藏死，按開始/按 X 都看不到左下角按鈕
     loadingScreen.style.display = 'none';
-    instructions.style.display = ''; // ← 新增：解除隱藏，恢復成 CSS 原本的顯示方式
+    instructions.classList.add('ready'); // ⚡ 改用 class 覆蓋 CSS 的 display:none 預設值，
+    // 不再用 style.display=''（那招只在 CSS 預設「非 none」時才有效，現在 CSS 預設已經是 none 了）
     // ⚡ 移除：不要一載入完就收合，改成使用者按下「點擊畫面開始」那一刻才收合
-    // （且只有手機的點擊分支會加上 at-corner，見下方 touchend/tapTimer 段落）
+    // （且只有手機的點擊分支會 remove('expanded') 觸發收合，見下方 touchend/tapTimer 段落）
 
     composer.render();
     labelRenderer.render(scene, camera);
@@ -5137,7 +5145,7 @@ if (isMobile) {
           // ⚡ 只有手機在按下「點擊畫面開始」時才自動收合說明面板：
           // 移除 expanded（面板縮小消失），並讓左下角的 fab 收合按鈕顯示出來
           instructions.classList.remove('expanded');
-          if (instructionsFab) instructionsFab.classList.remove('hide');
+          if (instructionsFab) instructionsFab.classList.add('show');
           return;
         }
 
