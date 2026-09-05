@@ -64,11 +64,16 @@ const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(
 
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
 let prevTime = performance.now() / 1000;
+// 📘 新手筆記：Vector3(x, y, z) 是 three.js 表示「3D 空間中一個方向或位置」的標準格式，
+// X=左右、Y=上下、Z=前後。velocity（速度）、direction（方向）都是用這種「三個數字一組」的物件表示。
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 const WALK_HOLD_ACCEL = 24; // ⚡ 手機長按前進/後退的加速度（單位跟鍵盤移動的 40.0 一致）。
 // 因為有阻尼 velocity.z -= velocity.z*10*moveDelta，穩定速度約等於「這個數字 ÷ 10」。
 // 想調快/調慢直接改這一個數字即可，不用再手動試「每幀加多少」這種不直覺的寫法。
+// 📘 新手筆記：Raycaster（射線投射器）= 從某個起點往某個方向射出一條看不見的直線，
+// 檢查這條線有沒有「打到」場景裡的物體。滑鼠/觸控點擊要判斷「點到了哪個 3D 物件」、
+// 走路要判斷「前面有沒有牆」，全部都是用同一個 raycaster、只是起點/方向設定不同而已。
 const raycaster = new THREE.Raycaster();
 const interactiveDevices = [];
 const doorObjects = [];
@@ -882,12 +887,17 @@ class DrainFlow {
 // ─────────────────────────────────────────
 // 三、場景、渲染器、後處理
 // ─────────────────────────────────────────
+// 📘 新手筆記：任何 three.js 專案都有這三樣東西：
+//   Scene（場景）  = 一個容器，所有 3D 物件都要 scene.add(...) 放進來才會被畫出來
+//   Camera（攝影機）= 決定「從哪裡、往哪個方向看」，對應玩家的眼睛
+//   Renderer（渲染器）= 把 Scene + Camera 的畫面，實際畫成一張圖顯示在網頁上（畫在它自動建立的 <canvas> 元素上）
+// 一句話：Scene 是舞台、Camera 是觀眾的眼睛、Renderer 是把整齣戲拍下來的攝影機。
 const scene = new THREE.Scene();
 window.scene = scene; // ← 新增這行，方便 console 除錯，之後可刪掉
-const camera = new THREE.PerspectiveCamera(
-  CONFIG.CAMERA.fov,
-  window.innerWidth / window.innerHeight,
-  0.1, 1000
+const camera = new THREE.PerspectiveCamera( // PerspectiveCamera = 透視攝影機，近大遠小，符合人眼真實感
+  CONFIG.CAMERA.fov, // fov = 視野角度（field of view），數字越大看到的範圍越廣、但邊緣會有魚眼變形感
+  window.innerWidth / window.innerHeight, // 長寬比，要跟畫面比例一致，不然畫面會被拉伸
+  0.1, 1000 // 近裁切面、遠裁切面：只畫「離攝影機 0.1~1000 公尺」範圍內的東西，太近或太遠都不畫（省效能）
 );
 camera.position.set(CONFIG.CAMERA.startPos.x, CONFIG.CAMERA.startPos.y, CONFIG.CAMERA.startPos.z);
 // ⚡ 修正手機觸控「往右滑卻變成往上看」的 bug：
@@ -896,6 +906,8 @@ camera.position.set(CONFIG.CAMERA.startPos.x, CONFIG.CAMERA.startPos.y, CONFIG.C
 // 不是 0，'XYZ' 順序會讓 yaw/pitch 兩軸互相耦合，導致水平滑動也會混進
 // 垂直分量、視覺上像是轉錯方向。改成跟 PointerLockControls 內部邏輯一致的
 // 'YXZ' 順序（yaw 永遠繞世界 Y 軸轉，不受目前 pitch 影響），才能讓兩軸完全獨立。
+// 📘 新手筆記：3D 旋轉如果同時牽涉多個軸，「先轉哪一軸」會影響最終結果（這跟 2D 旋轉不一樣），
+// 這就是為什麼要特別指定 rotation.order，不能只靠預設值。
 camera.rotation.order = 'YXZ';
 // ⚡ 新增：套用起始朝向。lookAtPos 原本只是設定檔裡的死資料，沒有任何地方讀取它，
 // 這裡補上 camera.lookAt()，讓進場那一刻的視角朝向真正對齊設定檔指定的目標點。
@@ -910,6 +922,9 @@ if (CONFIG.CAMERA.lookAtPos) {
 }
 window.camera = camera; // ← 新增這一行
 
+// 📘 新手筆記：WebGLRenderer 是靠顯卡（GPU）運算畫面的渲染器，效能比純 CPU 畫圖快很多。
+// 它會自動幫你建立一個 <canvas> 元素（下面 document.body.appendChild 就是把這個 canvas 加進網頁），
+// 整個 3D 場景畫面本體，其實就是這一個 canvas。
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
   //logarithmicDepthBuffer: true // 環境太大，camera抓不出微小距離差異
@@ -919,8 +934,8 @@ renderer.debug.checkShaderErrors = false;//  關鍵優化：關閉 Shader 編譯
 
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.85;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // 色調映射：讓高動態範圍的光線（例如很亮的窗外）轉換成螢幕能顯示的顏色時，效果更接近真實相機拍出來的感覺
+renderer.toneMappingExposure = 0.85; // 曝光值，數字越小畫面整體越暗
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
@@ -931,6 +946,10 @@ composer.addPass(new UnrealBloomPass(
   0.2, 0.5, 0.85
 ));
 
+// 📘 新手筆記：CSS2DRenderer 讓你可以把一般的 HTML 元素（<div> 之類）「釘」在 3D 空間裡
+// 的某個座標點上（用 CSS2DObject 包起來），它會每一幀重新計算「這個 3D 座標現在對應到
+// 螢幕上哪個 2D 像素」，自動把 HTML 元素移過去，看起來就像貼在 3D 物體旁邊、跟著視角移動，
+// 但內容其實是正常的 HTML/CSS，不受 3D 透視變形影響（濾心倒數圓環、操作提示文字都是這樣做的）。
 const labelRenderer = new CSS2DRenderer();
 labelRenderer.setSize(window.innerWidth, window.innerHeight);
 labelRenderer.domElement.style.cssText = 'position:fixed;top:0;left:0;pointer-events:none;width:100%;height:100%';
@@ -4700,6 +4719,10 @@ window.GAME_TARGET_FPS = TARGET_FPS;
 
 let isAnimating = true;
 
+// 📘 新手筆記：這是整個專案「動起來」的心臟，也就是 3.4 節講的動畫迴圈。
+// requestAnimationFrame(animate) 告訴瀏覽器「畫面要更新時，幫我呼叫 animate 這個函式」，
+// 而 animate 執行到最後又會呼叫一次 requestAnimationFrame(animate)，形成一個無限迴圈：
+// 每一輪都重新計算「現在應該長怎樣」→ 重新畫一次畫面 → 排定下一輪，快速重複就變成動畫。
 function animate(nowMs) {
 
   if (!isAnimating) return;
@@ -4713,6 +4736,9 @@ function animate(nowMs) {
   lastRenderTimeMs = nowMs;
 
   const time = nowMs / 1000;
+  // 📘 新手筆記：delta = 這一幀距離上一幀「實際經過了多少秒」（3.5 節的 delta time）。
+  // 後面所有跟移動/動畫速度有關的計算，只要有乘上 delta（或這裡衍生出的 moveDelta），
+  // 就代表這個效果的速度是「每秒多少」，不會因為裝置畫面更新頻率不同而跑速不一致。
   const delta = Math.min(time - prevTime, 0.1);
 
   // 門開關動畫
