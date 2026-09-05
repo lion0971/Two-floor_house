@@ -461,11 +461,11 @@ body {
   /* ⚡ 新增：展開時直接放大文字，取代雙指縮放手勢（雙指已經用在前進/後退移動，
      兩者手勢會衝突，所以改用「展開就直接是放大版文字」，更直覺也不會誤觸移動） */
   #instructions h3 {
-    font-size: 18px;
+    font-size: 20px;
   }
 
   #instructions li {
-    font-size: 16px;
+    font-size: 18px;
     line-height: 2.1;
   }
 
