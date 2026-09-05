@@ -540,7 +540,7 @@ body {
   position: absolute;
   left: 50%;
   top: 0;
-  transform: translate(-50%, calc(-100% - 6px)); /* 貼齊圓環上緣，往上留一點間距 */
+  transform: translate(-50%, calc(-100% - 3px)); /* ⚡ 原本 6px，距離太遠，減半到 3px */
   writing-mode: vertical-rl; /* 直式（由右至左直書），符合中文直式閱讀習慣 */
   text-orientation: upright; /* 讓每個中文字維持正立方向，而不是整個字轉90度躺著 */
   white-space: nowrap;
@@ -563,6 +563,7 @@ body {
   font-weight: 600;
   letter-spacing: 1px;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增：較深陰影，讓文字在各種背景下都看得更清楚 */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -580,8 +581,9 @@ body {
   font-size: 13px;
   line-height: 1.8;
   color: rgba(235, 240, 245, 0.85);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增 */
   display: flex;
-  align-items: center;
+  align-items: flex-start; /* ⚡ 原本 center，白字換行時會把藍色標籤字垂直置中到整段高度，改成頂部對齊，永遠跟第一行白字齊平 */
 }
 
 #instructions li strong {
@@ -589,6 +591,7 @@ body {
   font-weight: 500;
   margin-right: 6px;
   min-width: 68px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增：藍色標籤字也一併加深陰影，跟後面說明文字的可讀性一致 */
 }
 
 .door-label {
