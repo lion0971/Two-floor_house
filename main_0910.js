@@ -19,7 +19,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getDatabase, ref, onValue, get, set, remove, update, increment, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
+import { getDatabase, ref, onValue, get, set, remove, update, increment } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 
 const firebaseConfig = {
@@ -2787,24 +2787,23 @@ Object.assign(warningCloseBtn.style, {
 warningCloseBtn.onclick = () => {
   const deviceName = warningCloseBtn.dataset.device;
 
+  // ⚡ 修正bug：只重置「這個裝置自己」的計時器，不要牽動其他裝置。
+  // 原本用 for...in 迴圈把目前所有還在出水的裝置的計時器一起重置、
+  // alerted 旗標也一起清空，導致其他本來還沒到警告時間的裝置，
+  // 被迫跟這次確認的裝置同步重新倒數。結果只要有多個裝置同時在出水，
+  // 隨便確認一個警告，就會把全部裝置的下一次警告時間洗牌成同一時刻，
+  // 造成「只點了一個水龍頭，卻跳出所有裝置的警告，而且反覆跳出」的現象。
   if (activeTimers[deviceName]) {
     if (activeTimers[deviceName].startTime) activeTimers[deviceName].startTime = Date.now();
     activeTimers[deviceName].alerted = false;
+    // ⚡ 使用者已經看過第一次警告了，之後改用比較長的重複提醒間隔
+    // （WARNING_REPEAT_MS，預設10分鐘），不用再每60秒就吵一次。
     activeTimers[deviceName].repeatMode = true;
-  }
-
-  // ⚡ 新增：使用者已經在本機確認過這次警告，順手把 Firebase 上對應的
-  // 節點清掉，不要留著等下一次連線斷線才靠 onDisconnect 被動清除。
-  const ackToken = currentWarningToken[deviceName];
-  if (ackToken) {
-    stopPollingRemoteClose(deviceName);
-    remove(ref(db, `sessions/${ackToken}/${deviceName}`)).catch(err => {
-      console.warn('[Firebase] 刪除超時警告節點失敗', err);
-    });
   }
 
   dismissCurrentWarning(deviceName); // ★ 移除目前這個，並自動顯示佇列裡的下一個
 
+  // 選單仍開著就不鎖定，讓游標保持可見；佇列還有其他警告要顯示時也不要鎖定
   if (menuPanel.style.display !== 'flex' && warningQueue.length === 0) {
     setTimeout(() => controls.lock(), 80);
   }
@@ -2875,15 +2874,6 @@ warningOffBtn.onclick = () => {
   const deviceName = warningOffBtn.dataset.device;
 
   closeDeviceWater(deviceName);
-
-  // ⚡ 新增：關閉水流的同時，把 Firebase 上這筆超時警告節點也一併刪掉，
-  // 理由跟上面 warningCloseBtn 一樣——避免留下孤兒節點。
-  const offToken = currentWarningToken[deviceName];
-  if (offToken) {
-    remove(ref(db, `sessions/${offToken}/${deviceName}`)).catch(err => {
-      console.warn('[Firebase] 刪除超時警告節點失敗', err);
-    });
-  }
   stopPollingRemoteClose(deviceName);
 
   dismissCurrentWarning(deviceName); // ★ 移除目前這個，並自動顯示佇列裡的下一個
@@ -4141,17 +4131,12 @@ async function markTimeoutAlert(deviceName, token) {
   await authReadyPromise; // ★ 確保匿名登入完成才寫入
 
   const path = `sessions/${token}/${deviceName}`;
-  const nodeRef = ref(db, path);
   try {
-    await set(nodeRef, {
+    await set(ref(db, path), {
       status: 'timeout_alert',
       notified: false,
       timestamp: Date.now()
     });
-    // ⚡ 新增：跟寫入資料同一時機，順便告訴 Firebase 伺服器——
-    // 如果這條連線之後斷線了（不管是關分頁、斷網、當機），
-    // 伺服器自己幫我把這個節點刪掉，不需要瀏覽器還活著才能完成清除。
-    onDisconnect(nodeRef).remove();
   } catch (err) {
     console.warn('[Firebase] 寫入超時警告失敗', err);
   }
