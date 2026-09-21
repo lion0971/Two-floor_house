@@ -734,26 +734,16 @@ class WaterFlow {
     const colors = new Float32Array(this.count * 3);
 
     for (let i = 0; i < this.count; i++) {
-      // ⚡ 起始位置加一點點隨機抖動，避免所有粒子從完全同一個點出發、
-      // 看起來像排隊般整齊，讓水柱截面看起來更自然分散
-      const initJitter = this.type === 'shower' ? 0.01 : 0.006;
-      this.positions[i * 3] = this.emitPosition.x + (Math.random() - 0.5) * initJitter;
+      this.positions[i * 3] = this.emitPosition.x;
       this.positions[i * 3 + 1] = this.emitPosition.y;
-      this.positions[i * 3 + 2] = this.emitPosition.z + (Math.random() - 0.5) * initJitter;
+      this.positions[i * 3 + 2] = this.emitPosition.z;
 
       const b = 0.7 + Math.random() * 0.3; // 水滴顏色的隨機亮暗調配（RGB 算式
       colors[i * 3] = 0.3 * b;  // 紅色分量 (R)
       colors[i * 3 + 1] = 0.75 * b; // 綠色分量 (G)
       colors[i * 3 + 2] = 1.0 * b;  // 藍色分量 (B)
 
-      // ⚡ 修正：初始生命值改成「隨機介於 0 ~ maxLife 之間」，
-      // 而不是固定隨機 0~1 秒。原本因為 maxLife（faucet 只有0.2~0.4秒）
-      // 遠小於 Math.random() 常見產生的值，導致幾乎所有粒子在第一幀
-      // 就同時觸發重置，變成一批一批同步出生/同步消失，看起來像
-      // 一節一節分段的假水流。改成用 maxLife 本身的比例來隨機，
-      // 才能讓粒子的「出生時間點」真正均勻分散在整個生命週期裡。
-      const maxLifeForInit = this.type === 'faucet' ? 0.4 : 1.4; // 要跟 update() 裡的 maxLife 數值一致
-      this.lifetimes[i] = Math.random() * maxLifeForInit;
+      this.lifetimes[i] = Math.random();
       this._resetVelocity(i);
     }
 
@@ -824,8 +814,8 @@ class WaterFlow {
 
   update(delta) {
     if (!this.active) return;
-    const gravity = -0.002;
-    const maxLife = this.type === 'faucet' ? 0.4 : 1.4; // 水柱距離
+    const gravity = -0.003;
+    const maxLife = this.type === 'faucet' ? 0.25 : 0.9; // 水柱距離
 
     for (let i = 0; i < this.count; i++) {
       this.lifetimes[i] += delta; // 末速度 = 初速度 + 加速度 * 時間

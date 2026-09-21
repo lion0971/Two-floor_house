@@ -279,7 +279,7 @@ const STAIRCASE = {
   totalHeight: 3.4,
   stepHeight: 0.2,
   turns: 1,
-  radiusMargin: 0.3, // 原0.4 判断「该不该把玩家吸進樓梯轨道自走模式」
+  radiusMargin: 0.4,//判断「该不该把玩家吸进楼梯轨道自走模式」
   climbSpeed: 1.0,        // ← 新增：沿樓梯自動移動的速度（公尺/秒），數字越大爬得越快
   // ⚡ 新增：真正入口的方位角（用 console 量到的 109.7° 換算成弧度），
   // 只有從這個角度附近靠近樓梯才會被吸進「軌道自走模式」，
@@ -312,22 +312,6 @@ function getStairEntranceConfig(cameraY) {
     ? { angle: STAIRCASE.entranceAngleTop, tolerance: STAIRCASE.entranceAngleToleranceTop }
     : { angle: STAIRCASE.entranceAngle, tolerance: STAIRCASE.entranceAngleTolerance };
 }
-
-// ── 桌子（dining_table）虛擬碰撞範圍：因為桌腳很細，直接對 mesh 做
-// raycast 很容易從兩腳之間的縫隙穿過去偵測不到，改用簡單的水平矩形
-// 範圍（AABB，只看 X/Z，不管 Y），純數學判斷玩家有沒有踩進桌子的
-// 水平投影範圍內，不依賴射線角度、不會有穿透問題。
-// minX/maxX/minZ/maxZ 請依實際桌子在場景裡的世界座標填入，
-// 可以先在 console 打 `dining_table.geometry.computeBoundingBox()` 之類
-// 的方式量測，或直接抓 Box3().setFromObject() 的結果。
-const DINING_TABLE_BOUNDS = {
-  minX: 0,  // ← 依實際桌子位置填入
-  maxX: 0,
-  minZ: 0,
-  maxZ: 0,
-  margin: 0.1, // 額外緩衝，避免貼著桌緣時被夾住
-};
-window.DINING_TABLE_BOUNDS = DINING_TABLE_BOUNDS; // 方便 console 微調除錯
 
 // ⚡ 共用：計算「相對於 target 自身本地座標系」的包圍盒（不是世界座標）。
 // 不管 target 本身是單一 mesh 還是包含多個子網格的 Group（滑門/上掀門
@@ -734,26 +718,16 @@ class WaterFlow {
     const colors = new Float32Array(this.count * 3);
 
     for (let i = 0; i < this.count; i++) {
-      // ⚡ 起始位置加一點點隨機抖動，避免所有粒子從完全同一個點出發、
-      // 看起來像排隊般整齊，讓水柱截面看起來更自然分散
-      const initJitter = this.type === 'shower' ? 0.01 : 0.006;
-      this.positions[i * 3] = this.emitPosition.x + (Math.random() - 0.5) * initJitter;
+      this.positions[i * 3] = this.emitPosition.x;
       this.positions[i * 3 + 1] = this.emitPosition.y;
-      this.positions[i * 3 + 2] = this.emitPosition.z + (Math.random() - 0.5) * initJitter;
+      this.positions[i * 3 + 2] = this.emitPosition.z;
 
       const b = 0.7 + Math.random() * 0.3; // 水滴顏色的隨機亮暗調配（RGB 算式
       colors[i * 3] = 0.3 * b;  // 紅色分量 (R)
       colors[i * 3 + 1] = 0.75 * b; // 綠色分量 (G)
       colors[i * 3 + 2] = 1.0 * b;  // 藍色分量 (B)
 
-      // ⚡ 修正：初始生命值改成「隨機介於 0 ~ maxLife 之間」，
-      // 而不是固定隨機 0~1 秒。原本因為 maxLife（faucet 只有0.2~0.4秒）
-      // 遠小於 Math.random() 常見產生的值，導致幾乎所有粒子在第一幀
-      // 就同時觸發重置，變成一批一批同步出生/同步消失，看起來像
-      // 一節一節分段的假水流。改成用 maxLife 本身的比例來隨機，
-      // 才能讓粒子的「出生時間點」真正均勻分散在整個生命週期裡。
-      const maxLifeForInit = this.type === 'faucet' ? 0.4 : 1.4; // 要跟 update() 裡的 maxLife 數值一致
-      this.lifetimes[i] = Math.random() * maxLifeForInit;
+      this.lifetimes[i] = Math.random();
       this._resetVelocity(i);
     }
 
@@ -762,7 +736,7 @@ class WaterFlow {
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3)); // 3 (itemSize)：告訴 GPU 每 3 個數字看成一組（例如：$[X, Y, Z]$ 或 $[R, G, B]$）
 
     const mat = new THREE.PointsMaterial({
-      size: this.type === 'shower' ? 0.025 : 0.015, //水柱顆粒
+      size: this.type === 'shower' ? 0.025 : 0.035,
       vertexColors: true,
       transparent: true,
       opacity: 0.85,
@@ -824,8 +798,8 @@ class WaterFlow {
 
   update(delta) {
     if (!this.active) return;
-    const gravity = -0.002;
-    const maxLife = this.type === 'faucet' ? 0.4 : 1.4; // 水柱距離
+    const gravity = -0.003;
+    const maxLife = this.type === 'faucet' ? 0.2 : 0.9;
 
     for (let i = 0; i < this.count; i++) {
       this.lifetimes[i] += delta; // 末速度 = 初速度 + 加速度 * 時間
@@ -1412,37 +1386,6 @@ function resolveStaircaseCylinderCollision(moveVelocity) {
   }
 }
 
-// ⚡ 桌子虛擬碰撞：純數學矩形範圍判斷，不依賴 raycast，
-// 玩家移動後的下一步位置如果會落入桌子的水平投影範圍內，
-// 就依撞到的邊（X方向或Z方向哪個先超界）擋住對應分量，形成貼邊滑動。
-function resolveDiningTableCollision(moveVelocity) {
-  const b = DINING_TABLE_BOUNDS;
-  if (b.minX === b.maxX) return; // 尚未量測成功，跳過
-
-  const nextX = camera.position.x + moveVelocity.x;
-  const nextZ = camera.position.z + moveVelocity.z;
-
-  const inX = nextX >= b.minX - b.margin && nextX <= b.maxX + b.margin;
-  const inZ = nextZ >= b.minZ - b.margin && nextZ <= b.maxZ + b.margin;
-
-  if (!(inX && inZ)) return; // 下一步不會踩進桌子範圍，不用擋
-
-  // 判斷目前在哪一側，藉此決定要擋 X 分量還是 Z 分量（貼著桌緣滑動，
-  // 而不是整個停住），邏輯上跟角色沿牆滑動的概念一致。
-  const curInX = camera.position.x >= b.minX - b.margin && camera.position.x <= b.maxX + b.margin;
-  const curInZ = camera.position.z >= b.minZ - b.margin && camera.position.z <= b.maxZ + b.margin;
-
-  if (!curInX) {
-    moveVelocity.x = 0; // 原本在X範圍外，是X方向撞進來的，擋X
-  } else if (!curInZ) {
-    moveVelocity.z = 0; // 原本在Z範圍外，是Z方向撞進來的，擋Z
-  } else {
-    // 兩者都已經在範圍內（理論上不太會發生，保險處理）：兩個分量都擋
-    moveVelocity.x = 0;
-    moveVelocity.z = 0;
-  }
-}
-
 function handleMovementAndCollision(moveVelocity) {
   // ⚡ 效能優化：如果沒有移動速度，直接跳過碰撞檢測
   if (moveVelocity.lengthSq() < 0.000001) {
@@ -1473,7 +1416,6 @@ function handleMovementAndCollision(moveVelocity) {
     const beforeZ = moveVelocity.z;
     resolveCollisionSlide(moveVelocity, collidableObjects, collidableSpheres);
     resolveStaircaseCylinderCollision(moveVelocity);
-    resolveDiningTableCollision(moveVelocity); // ← 新增這行
     if (moveVelocity.x === beforeX && moveVelocity.z === beforeZ) break;
   }
 
@@ -2603,20 +2545,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
   if (poolWaterMeshes.length > 0) {
     poolBounds = new THREE.Box3();
     poolWaterMeshes.forEach(m => poolBounds.union(new THREE.Box3().setFromObject(m)));
-  }
-
-    // ⚡ 自動量測 dining_table 的世界座標水平包圍盒，取代手動填寫座標，
-  // 避免之後桌子位置调整了還要回來改程式碼裡的數字。
-  const diningTableMesh = cachedSceneMeshes.find(m => m.name.toLowerCase().includes('dining_table'))
-    ?? gltf.scene.getObjectByName('dining_table'); // 保險：cachedSceneMeshes 篩選條件跟你實際命名可能不同，這裡多一層保險查找
-  if (diningTableMesh) {
-    const tableBox = new THREE.Box3().setFromObject(diningTableMesh);
-    DINING_TABLE_BOUNDS.minX = tableBox.min.x;
-    DINING_TABLE_BOUNDS.maxX = tableBox.max.x;
-    DINING_TABLE_BOUNDS.minZ = tableBox.min.z;
-    DINING_TABLE_BOUNDS.maxZ = tableBox.max.z;
-  } else {
-    console.warn('[DiningTable] 找不到 dining_table，虛擬碰撞範圍未套用');
   }
 
   // ⚡ 效能優化：碰撞偵測（checkCurrentCollision / resolveCollisionSlide）

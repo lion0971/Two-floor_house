@@ -92,24 +92,7 @@ const SLIDE_SIGN_OVERRIDE = {
 // 需要「從右邊打開」（往反方向開）的門，填 1 即可。
 const SWING_SIGN_OVERRIDE = {
   'door_restroom_2': 1,
-  'door_livingroom': 1,
-  'door_livingroom_1': 1,
 };
-// ── 門把指示器（三角形＋泡泡）位置校正 ──
-// 自動計算：doorWidth（門片寬度，來自geometry本地包圍盒）+ handleSign（門把在門軸的哪一側）。
-// 如果自動抓出來的方向或距離不準，可在這裡針對特定門名稱手動覆寫 handleSign（1 或 -1）。
-
-// ── 門把指示器「正面判斷」：只在使用者站在門的正面時才顯示三角形。
-// 預設假設模型的門片正面法向量是本地 +Z 軸，如果實際上不對（三角形在
-// 應該看不到的那一側還是顯示），針對該扇門填入正確的軸向/正負號即可。
-const DOOR_FRONT_NORMAL_AXIS_OVERRIDE = {
-  // 'door_livingroom': 'x',
-};
-const DOOR_FRONT_NORMAL_SIGN_OVERRIDE = {
-  // 'door_livingroom': -1,
-};
-
-
 
 // ── 上掀式門（turn_up_door，繞 X 軸往上掀開 60 度）方向如果不對，可在這裡指定特定門反方向掀 ──
 // 預設往上掀開的方向是 -1，若實際掀開後方向相反（往下掀），填 1 即可。
@@ -279,7 +262,7 @@ const STAIRCASE = {
   totalHeight: 3.4,
   stepHeight: 0.2,
   turns: 1,
-  radiusMargin: 0.3, // 原0.4 判断「该不该把玩家吸進樓梯轨道自走模式」
+  radiusMargin: 0.4,//判断「该不该把玩家吸进楼梯轨道自走模式」
   climbSpeed: 1.0,        // ← 新增：沿樓梯自動移動的速度（公尺/秒），數字越大爬得越快
   // ⚡ 新增：真正入口的方位角（用 console 量到的 109.7° 換算成弧度），
   // 只有從這個角度附近靠近樓梯才會被吸進「軌道自走模式」，
@@ -311,83 +294,6 @@ function getStairEntranceConfig(cameraY) {
   return isUpperApproach
     ? { angle: STAIRCASE.entranceAngleTop, tolerance: STAIRCASE.entranceAngleToleranceTop }
     : { angle: STAIRCASE.entranceAngle, tolerance: STAIRCASE.entranceAngleTolerance };
-}
-
-// ── 桌子（dining_table）虛擬碰撞範圍：因為桌腳很細，直接對 mesh 做
-// raycast 很容易從兩腳之間的縫隙穿過去偵測不到，改用簡單的水平矩形
-// 範圍（AABB，只看 X/Z，不管 Y），純數學判斷玩家有沒有踩進桌子的
-// 水平投影範圍內，不依賴射線角度、不會有穿透問題。
-// minX/maxX/minZ/maxZ 請依實際桌子在場景裡的世界座標填入，
-// 可以先在 console 打 `dining_table.geometry.computeBoundingBox()` 之類
-// 的方式量測，或直接抓 Box3().setFromObject() 的結果。
-const DINING_TABLE_BOUNDS = {
-  minX: 0,  // ← 依實際桌子位置填入
-  maxX: 0,
-  minZ: 0,
-  maxZ: 0,
-  margin: 0.1, // 額外緩衝，避免貼著桌緣時被夾住
-};
-window.DINING_TABLE_BOUNDS = DINING_TABLE_BOUNDS; // 方便 console 微調除錯
-
-// ⚡ 共用：計算「相對於 target 自身本地座標系」的包圍盒（不是世界座標）。
-// 不管 target 本身是單一 mesh 還是包含多個子網格的 Group（滑門/上掀門
-// 常見的情況），都會把所有子孫 mesh 的頂點座標轉換到 target 的本地空間
-// 再合併，這樣算出來的中心點/薄軸判斷，才能正確拿來當作 target 的
-// 本地座標偏移使用（直接用世界座標包圍盒會混入 target 自己在世界中的
-// 位置/朝向，數字完全對不上——這正是之前滑門跑位、正反面判斷亂掉的原因）。
-// 呼叫時機必須在 gltf.scene.updateMatrixWorld(true) 執行過之後。
-function computeDoorIndicatorMeta(target) {
-  const box = new THREE.Box3();
-  const invMatrix = new THREE.Matrix4().copy(target.matrixWorld).invert();
-  const tmpBox = new THREE.Box3();
-
-  target.traverse((child) => {
-    if (!child.isMesh || !child.geometry) return;
-    child.geometry.computeBoundingBox();
-    tmpBox.copy(child.geometry.boundingBox);
-    tmpBox.applyMatrix4(child.matrixWorld); // 子網格本地 → 世界座標
-    tmpBox.applyMatrix4(invMatrix);          // 世界座標 → target 的本地座標
-    box.union(tmpBox);
-  });
-
-  if (box.isEmpty()) {
-    return { frontAxis: 'z', doorCenterX: 0, doorCenterY: 0 };
-  }
-
-  const sizeX = box.max.x - box.min.x;
-  const sizeY = box.max.y - box.min.y;
-  const sizeZ = box.max.z - box.min.z;
-
-  let frontAxis = 'z';
-  if (sizeX <= sizeY && sizeX <= sizeZ) frontAxis = 'x';
-  else if (sizeZ <= sizeX && sizeZ <= sizeY) frontAxis = 'z';
-  else frontAxis = 'y';
-
-  return {
-    frontAxis,
-    doorCenterX: (box.min.x + box.max.x) / 2,
-    doorCenterY: (box.min.y + box.max.y) / 2,
-  };
-}
-
-// ⚡ 依門的類型算出「本地座標系下」的開門方向單位向量，
-// 給門靠近指示器（三角形＋泡泡）用來換算螢幕空間角度。
-function getDoorOpenLocalDirection(anim) {
-  if (!anim) return new THREE.Vector3(1, 0, 0);
-  if (anim.type === 'sliding') {
-    const sign = anim.slideSign ?? -1;
-    if (anim.slideAxis === 'z') return new THREE.Vector3(0, 0, sign);
-    if (anim.slideAxis === 'y') return new THREE.Vector3(0, sign, 0);
-    return new THREE.Vector3(sign, 0, 0);
-  }
-  if (anim.type === 'turn_up') {
-    return new THREE.Vector3(0, 1, 0); // 上掀式門固定指向上方
-  }
-  // ⚡ 旋轉門：指示器現在改掛在「門把」位置（門軸另一側、垂直置中），
-  // 不再是貼在門軸正上方，所以「指回門軸」的方向也從垂直向下
-  // 改成沿本地 X 軸水平指回原點（原點＝門軸）。
-  const sign = anim.swingSign ?? -1;
-  return new THREE.Vector3(-sign, 0, 0);
 }
 
 let isOnStairRail = false;  // 是否正處於「樓梯軌道自走模式」
@@ -734,26 +640,16 @@ class WaterFlow {
     const colors = new Float32Array(this.count * 3);
 
     for (let i = 0; i < this.count; i++) {
-      // ⚡ 起始位置加一點點隨機抖動，避免所有粒子從完全同一個點出發、
-      // 看起來像排隊般整齊，讓水柱截面看起來更自然分散
-      const initJitter = this.type === 'shower' ? 0.01 : 0.006;
-      this.positions[i * 3] = this.emitPosition.x + (Math.random() - 0.5) * initJitter;
+      this.positions[i * 3] = this.emitPosition.x;
       this.positions[i * 3 + 1] = this.emitPosition.y;
-      this.positions[i * 3 + 2] = this.emitPosition.z + (Math.random() - 0.5) * initJitter;
+      this.positions[i * 3 + 2] = this.emitPosition.z;
 
       const b = 0.7 + Math.random() * 0.3; // 水滴顏色的隨機亮暗調配（RGB 算式
       colors[i * 3] = 0.3 * b;  // 紅色分量 (R)
       colors[i * 3 + 1] = 0.75 * b; // 綠色分量 (G)
       colors[i * 3 + 2] = 1.0 * b;  // 藍色分量 (B)
 
-      // ⚡ 修正：初始生命值改成「隨機介於 0 ~ maxLife 之間」，
-      // 而不是固定隨機 0~1 秒。原本因為 maxLife（faucet 只有0.2~0.4秒）
-      // 遠小於 Math.random() 常見產生的值，導致幾乎所有粒子在第一幀
-      // 就同時觸發重置，變成一批一批同步出生/同步消失，看起來像
-      // 一節一節分段的假水流。改成用 maxLife 本身的比例來隨機，
-      // 才能讓粒子的「出生時間點」真正均勻分散在整個生命週期裡。
-      const maxLifeForInit = this.type === 'faucet' ? 0.4 : 1.4; // 要跟 update() 裡的 maxLife 數值一致
-      this.lifetimes[i] = Math.random() * maxLifeForInit;
+      this.lifetimes[i] = Math.random();
       this._resetVelocity(i);
     }
 
@@ -762,7 +658,7 @@ class WaterFlow {
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3)); // 3 (itemSize)：告訴 GPU 每 3 個數字看成一組（例如：$[X, Y, Z]$ 或 $[R, G, B]$）
 
     const mat = new THREE.PointsMaterial({
-      size: this.type === 'shower' ? 0.025 : 0.015, //水柱顆粒
+      size: this.type === 'shower' ? 0.025 : 0.035,
       vertexColors: true,
       transparent: true,
       opacity: 0.85,
@@ -824,8 +720,8 @@ class WaterFlow {
 
   update(delta) {
     if (!this.active) return;
-    const gravity = -0.002;
-    const maxLife = this.type === 'faucet' ? 0.4 : 1.4; // 水柱距離
+    const gravity = -0.003;
+    const maxLife = this.type === 'faucet' ? 0.2 : 0.9;
 
     for (let i = 0; i < this.count; i++) {
       this.lifetimes[i] += delta; // 末速度 = 初速度 + 加速度 * 時間
@@ -1029,12 +925,6 @@ if (CONFIG.CAMERA.lookAtPos) {
   );
 }
 window.camera = camera; // ← 新增這一行
-
-// ⚡ 新增：AudioListener 是 Web Audio 的「耳朵」，掛在攝影機上代表
-// 音量/左右聲道會依攝影機（也就是玩家）的位置/朝向計算，
-// 跟 PositionalAudio（掛在音源物件上，代表「嘴巴」）搭配使用。
-const audioListener = new THREE.AudioListener();
-camera.add(audioListener);
 
 // 📘 新手筆記：WebGLRenderer 是靠顯卡（GPU）運算畫面的渲染器，效能比純 CPU 畫圖快很多。
 // 它會自動幫你建立一個 <canvas> 元素（下面 document.body.appendChild 就是把這個 canvas 加進網頁），
@@ -1412,37 +1302,6 @@ function resolveStaircaseCylinderCollision(moveVelocity) {
   }
 }
 
-// ⚡ 桌子虛擬碰撞：純數學矩形範圍判斷，不依賴 raycast，
-// 玩家移動後的下一步位置如果會落入桌子的水平投影範圍內，
-// 就依撞到的邊（X方向或Z方向哪個先超界）擋住對應分量，形成貼邊滑動。
-function resolveDiningTableCollision(moveVelocity) {
-  const b = DINING_TABLE_BOUNDS;
-  if (b.minX === b.maxX) return; // 尚未量測成功，跳過
-
-  const nextX = camera.position.x + moveVelocity.x;
-  const nextZ = camera.position.z + moveVelocity.z;
-
-  const inX = nextX >= b.minX - b.margin && nextX <= b.maxX + b.margin;
-  const inZ = nextZ >= b.minZ - b.margin && nextZ <= b.maxZ + b.margin;
-
-  if (!(inX && inZ)) return; // 下一步不會踩進桌子範圍，不用擋
-
-  // 判斷目前在哪一側，藉此決定要擋 X 分量還是 Z 分量（貼著桌緣滑動，
-  // 而不是整個停住），邏輯上跟角色沿牆滑動的概念一致。
-  const curInX = camera.position.x >= b.minX - b.margin && camera.position.x <= b.maxX + b.margin;
-  const curInZ = camera.position.z >= b.minZ - b.margin && camera.position.z <= b.maxZ + b.margin;
-
-  if (!curInX) {
-    moveVelocity.x = 0; // 原本在X範圍外，是X方向撞進來的，擋X
-  } else if (!curInZ) {
-    moveVelocity.z = 0; // 原本在Z範圍外，是Z方向撞進來的，擋Z
-  } else {
-    // 兩者都已經在範圍內（理論上不太會發生，保險處理）：兩個分量都擋
-    moveVelocity.x = 0;
-    moveVelocity.z = 0;
-  }
-}
-
 function handleMovementAndCollision(moveVelocity) {
   // ⚡ 效能優化：如果沒有移動速度，直接跳過碰撞檢測
   if (moveVelocity.lengthSq() < 0.000001) {
@@ -1473,7 +1332,6 @@ function handleMovementAndCollision(moveVelocity) {
     const beforeZ = moveVelocity.z;
     resolveCollisionSlide(moveVelocity, collidableObjects, collidableSpheres);
     resolveStaircaseCylinderCollision(moveVelocity);
-    resolveDiningTableCollision(moveVelocity); // ← 新增這行
     if (moveVelocity.x === beforeX && moveVelocity.z === beforeZ) break;
   }
 
@@ -1671,58 +1529,6 @@ function _createWaterFlow(deviceName) {
 // ─────────────────────────────────────────
 // ✅ 只宣告一次 manager
 const manager = new THREE.LoadingManager(); // 製作「載入中...（Loading...）」進度條
-
-// ─────────────────────────────────────────
-// 水流音效
-// ─────────────────────────────────────────
-// ⚡ 音效檔案準備兩種循環音（水龍頭細流 vs 蓮蓬頭大水柱），
-// 放在你的靜態資源目錄下，路徑請依實際檔案位置調整。
-const AUDIO_FILES = {
-  faucet: 'audio/faucet_loop.ogg',
-  shower: 'audio/shower_loop.ogg',
-};
-
-const audioLoader = new THREE.AudioLoader(manager); // 掛進 manager，跟其他資源一起算進載入進度
-
-window.audioLoader = audioLoader; // 方便之後在 console 除錯用
-
-const audioBuffers = {}; // { faucet: AudioBuffer, shower: AudioBuffer }
-const deviceWaterSounds = {}; // { [deviceName]: THREE.PositionalAudio }
-
-Object.entries(AUDIO_FILES).forEach(([type, url]) => {
-  audioLoader.load(url, (buffer) => {
-    audioBuffers[type] = buffer;
-  }, undefined, (err) => {
-    console.warn(`[音效] 載入 ${type} 音效失敗`, err);
-  });
-});
-
-// ⚡ 幫指定裝置建立一個掛在出水口位置上的空間音效音源。
-// 一定要等 outletObjects 填好、且 audioBuffers 對應類型已經載入完成才能呼叫，
-// 所以放在 loader.load(CONFIG.MODELS.BUILDING, ...) callback 的最後面呼叫（見下方步驟3）。
-function createDeviceWaterSound(deviceName) {
-  const cfg = PIPE_CONFIG[deviceName];
-  if (!cfg) return;
-
-  const buffer = audioBuffers[cfg.type]; // 'faucet' 或 'shower'
-  if (!buffer) {
-    console.warn(`[音效] ${cfg.type} 音效尚未載入完成，${deviceName} 無法建立音源`);
-    return;
-  }
-
-  const anchor = outletObjects[cfg.outletKey];
-  if (!anchor) return;
-
-  const sound = new THREE.PositionalAudio(audioListener);
-  sound.setBuffer(buffer);
-  sound.setLoop(true);
-  sound.setRefDistance(1.5);  // 音量開始衰減的距離（公尺），可依場景大小調整
-  sound.setMaxDistance(12);   // 超過這個距離幾乎聽不到
-  sound.setVolume(cfg.type === 'shower' ? 0.6 : 0.4);
-  anchor.add(sound); // 掛在出水口上，位置會自動跟著裝置走
-
-  deviceWaterSounds[deviceName] = sound;
-}
 
 const loadingScreen = document.getElementById('loading-screen');
 const instructions = document.getElementById('instructions');
@@ -2194,8 +2000,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
     const name = obj.name.toLowerCase();
     // ⚡ 名稱含 "sliding_up_door" 的門視為「往上滑動」的滑門
     const isUpSlidingDoor = name.includes('sliding_up_door');
-    // ⚡ 新增：名稱含 "sliding_down_door" 的門視為「往下滑動」的滑門
-    const isDownSlidingDoor = name.includes('sliding_down_door');
     // ⚡ 名稱含 "turn_up_door" 的門視為「往上掀開」的門（繞 X 軸旋轉 60 度）
     const isTurnUpDoor = name.includes('turn_up_door');
 
@@ -2203,23 +2007,17 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
       // 避免同一個名稱被重複登記（例如父物件跟唯一的子 mesh 剛好同名）
       if (doorAnimations[name]) return;
 
-      const doorIndicatorMeta = computeDoorIndicatorMeta(obj);
-
       doorAnimations[name] = {
         mesh: obj,
         isOpen: false,
         progress: 0,
         direction: 0,
         type: 'turn_up',
-        turnUpSign: TURN_UP_SIGN_OVERRIDE[name] ?? -1,
-        turnUpAxis: TURN_UP_AXIS_OVERRIDE[name] ?? 'z',
-        baseRotationX: obj.rotation.x,
+        turnUpSign: TURN_UP_SIGN_OVERRIDE[name] ?? -1, // 預設往上掀開方向，可用 override 反轉
+        turnUpAxis: TURN_UP_AXIS_OVERRIDE[name] ?? 'z', // 預設繞 X 軸，可用 override 改成 y 或 z
+        baseRotationX: obj.rotation.x, // 記錄關閉時原本角度，避免絕對覆蓋造成角度錯亂
         baseRotationY: obj.rotation.y,
         baseRotationZ: obj.rotation.z,
-        // ⚡ 指示器用：門的本地中心點
-        frontAxis: DOOR_FRONT_NORMAL_AXIS_OVERRIDE[name] ?? doorIndicatorMeta.frontAxis,
-        indicatorLocalX: doorIndicatorMeta.doorCenterX,
-        indicatorLocalY: doorIndicatorMeta.doorCenterY,
       };
 
       obj.traverse((child) => {
@@ -2228,7 +2026,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
       return;
     }
 
-        if (!name.includes('sliding_door') && !isUpSlidingDoor && !isDownSlidingDoor) return;
+    if (!name.includes('sliding_door') && !isUpSlidingDoor) return;
     // 避免同一個名稱被重複登記（例如父物件跟唯一的子 mesh 剛好同名）
     if (doorAnimations[name]) return;
 
@@ -2237,18 +2035,15 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
     box.getSize(size);
 
     const DOOR_OPEN_MARGIN = 0.1;
-    // 往上/往下滑動的門固定用 Y 軸，不套用原本 X/Z 自動判斷邏輯
-    const slideAxis = (isUpSlidingDoor || isDownSlidingDoor)
+    // 往上滑動的門固定用 Y 軸，不套用原本 X/Z 自動判斷邏輯
+    const slideAxis = isUpSlidingDoor
       ? 'y'
       : (SLIDE_AXIS_OVERRIDE[name] ?? (size.x >= size.z ? 'x' : 'z'));
-    const slideDistance = (isUpSlidingDoor || isDownSlidingDoor)
+    const slideDistance = isUpSlidingDoor
       ? Math.max(0, size.y - DOOR_OPEN_MARGIN)
       : Math.max(0, (slideAxis === 'z' ? size.z : size.x) - DOOR_OPEN_MARGIN);
-    // 往上滑動預設方向是 +Y（往上開），往下滑動預設方向是 -Y（往下開），
-    // 一般滑門預設是 -1；都可用 SLIDE_SIGN_OVERRIDE 覆寫
+    // 往上滑動預設方向是 +Y（往上開），一般滑門預設是 -1；都可用 SLIDE_SIGN_OVERRIDE 覆寫
     const slideSign = SLIDE_SIGN_OVERRIDE[name] ?? (isUpSlidingDoor ? 1 : -1);
-
-    const doorIndicatorMeta = computeDoorIndicatorMeta(obj);
 
     doorAnimations[name] = {
       mesh: obj,
@@ -2262,10 +2057,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
       startX: obj.position.x,
       startZ: obj.position.z,
       startY: obj.position.y,
-      // ⚡ 指示器用：門的本地中心點
-      frontAxis: DOOR_FRONT_NORMAL_AXIS_OVERRIDE[name] ?? doorIndicatorMeta.frontAxis,
-      indicatorLocalX: doorIndicatorMeta.doorCenterX,
-      indicatorLocalY: doorIndicatorMeta.doorCenterY,
     };
 
     obj.traverse((child) => {
@@ -2570,24 +2361,14 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
     // 就不要再被這裡的「door_」規則覆蓋成旋轉門
     if (name.includes('door_') && !doorAnimations[name]) {
       doorObjects.push(mesh);
-
-      // ⚡ 新增：用門片自己的「本地」geometry 包圍盒（不受父層旋轉影響），
-      // 算出門片寬度、垂直中心、以及門把該偏向哪一側（離原點/門軸較遠的那一邊）。
-      // 供 attachDoorIndicatorsToScene() 換算門把指示器的位置用。
-      const doorIndicatorMeta = computeDoorIndicatorMeta(mesh);
-
       doorAnimations[name] = {
         mesh,
         isOpen: false,
         progress: 0,
         direction: 0,
-        type: 'swing',
-        swingSign: SWING_SIGN_OVERRIDE[name] ?? -1,
-        baseRotationY: mesh.rotation.y,
-        // ⚡ 指示器用：門的本地中心點（不再用門把偏移邏輯）
-        frontAxis: DOOR_FRONT_NORMAL_AXIS_OVERRIDE[name] ?? doorIndicatorMeta.frontAxis,
-        indicatorLocalX: doorIndicatorMeta.doorCenterX,
-        indicatorLocalY: doorIndicatorMeta.doorCenterY,
+        type: 'swing',          // ← 原本旋轉門也標記類型，方便 animate() 判斷
+        swingSign: SWING_SIGN_OVERRIDE[name] ?? -1,  // ⚡ 開門方向，預設 -1，例外門用 1
+        baseRotationY: mesh.rotation.y,  // ⚡ 記錄門原本（關閉時）的角度，避免絕對覆蓋造成角度錯亂
       };
     }
 
@@ -2603,20 +2384,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
   if (poolWaterMeshes.length > 0) {
     poolBounds = new THREE.Box3();
     poolWaterMeshes.forEach(m => poolBounds.union(new THREE.Box3().setFromObject(m)));
-  }
-
-    // ⚡ 自動量測 dining_table 的世界座標水平包圍盒，取代手動填寫座標，
-  // 避免之後桌子位置调整了還要回來改程式碼裡的數字。
-  const diningTableMesh = cachedSceneMeshes.find(m => m.name.toLowerCase().includes('dining_table'))
-    ?? gltf.scene.getObjectByName('dining_table'); // 保險：cachedSceneMeshes 篩選條件跟你實際命名可能不同，這裡多一層保險查找
-  if (diningTableMesh) {
-    const tableBox = new THREE.Box3().setFromObject(diningTableMesh);
-    DINING_TABLE_BOUNDS.minX = tableBox.min.x;
-    DINING_TABLE_BOUNDS.maxX = tableBox.max.x;
-    DINING_TABLE_BOUNDS.minZ = tableBox.min.z;
-    DINING_TABLE_BOUNDS.maxZ = tableBox.max.z;
-  } else {
-    console.warn('[DiningTable] 找不到 dining_table，虛擬碰撞範圍未套用');
   }
 
   // ⚡ 效能優化：碰撞偵測（checkCurrentCollision / resolveCollisionSlide）
@@ -2650,13 +2417,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
     _createWaterFlow(mesh.name.toLowerCase());
   });
 
-  // ✅ 建立水流音效（如果音效檔案還沒載入完成，這裡會先跳過，
-  // 等音效真正載入好之後不會自動補建立——如果你的音效檔案較大、
-  // 擔心跟建築模型載入時機沒對齊，可以改用下方「保險寫法」）
-  interactiveDevices.forEach(mesh => {
-    createDeviceWaterSound(mesh.name.toLowerCase());
-  });
-
   // ✅ 建立排水漩渦粒子（drain 現在統一比照 outlet，是純定位用的空物件）
   Object.values(PIPE_CONFIG).forEach(cfg => {
     const anchor = drainObjects[cfg.drainKey];
@@ -2681,7 +2441,6 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
   // ✅ 把客廳門靠近提示也掛上去，原因相同：一定要等 doorAnimations
   // 填好之後才能找到對應的 mesh。
   attachDoorHintsToScene();
-  attachDoorIndicatorsToScene();
 });
 
 // ── 太陽平行光（右前方斜上 45°）──
@@ -3115,10 +2874,6 @@ function closeDeviceWater(deviceName) {
   waterFlows[deviceName]?.setActive(false);
   drainFlows[cfg.drainKey]?.setActive(false);
   setFilterActive(deviceName, false);
-
-    // ⚡ 統一關水入口（涵蓋按鈕手動關閉/LINE遠端關閉），一併停止音效
-  const sound = deviceWaterSounds[deviceName];
-  if (sound && sound.isPlaying) sound.stop();
 
   if (activeTimers[deviceName]) {
     activeTimers[deviceName].startTime = null;
@@ -3866,200 +3621,6 @@ doorHintStyleTag.textContent = `
 `;
 document.head.appendChild(doorHintStyleTag);
 
-// ⚡ 門開啟方向指示器（三角形＋泡泡）總開關：設成 false 可一次關閉所有門的指示器，
-// 不用逐一修改個別門的設定。之後想在遊戲內加UI切換，也只需要改這個變數即可。
-let SHOW_DOOR_INDICATORS = false; // 控制門的三角形triangle是否顯示
-window.SHOW_DOOR_INDICATORS = SHOW_DOOR_INDICATORS; // 方便在 console 直接切換除錯
-const DOOR_INDICATOR_RADIUS = 3.5;          // 靠近幾公尺內顯示
-const DOOR_INDICATOR_INTERVAL = 3.0;        // 幾秒重播一次泡泡滑動
-const DOOR_INDICATOR_HEIGHT_OFFSET = 1.0;   // 掛在門上的垂直偏移，可依實際模型調整
-const DOOR_INDICATOR_DIR_SAMPLE_DIST = 0.6; // 世界座標中沿開門方向取樣多遠，用來算螢幕角度
-
-const doorIndicatorInstances = {}; // { [device]: {...} }
-
-// ⚡ 每個指示器的 SVG 需要各自獨立的 clipPath id（同一頁面裡如果多個
-// <svg> 共用同一個 id，瀏覽器只會認第一個，導致其他門的裁切失效），
-// 用一個遞增計數器確保每扇門拿到的 id 都不一樣。
-let _doorIndicatorSvgIdCounter = 0;
-
-function createDoorIndicator(name) {
-  const wrapper = document.createElement('div');
-
-  const root = document.createElement('div');
-  root.className = 'door-indicator-root';
-
-  const group = document.createElement('div');
-  group.className = 'door-indicator-group';
-
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const uid = _doorIndicatorSvgIdCounter++;
-  const gradId = `doorIndicatorTriGradient_${uid}`;
-
-  const svg = document.createElementNS(svgNS, 'svg');
-  svg.setAttribute('class', 'door-indicator-triangle-svg');
-  svg.setAttribute('viewBox', '0 0 34 26');
-
-  const trianglePoints = '0,0 34,13 0,26';
-
-  const defs = document.createElementNS(svgNS, 'defs');
-
-  // ⚡ gradientUnits="userSpaceOnUse"：讓漸層用固定的座標系（跟 viewBox
-  // 一致），而不是跟著三角形的包圍盒縮放，這樣才能用 gradientTransform
-  // 平移漸層本身的位置，做出「光滑過去」的效果，而不是漸層跟著三角形
-  // 形狀伸縮。x1/x2 涵蓋比三角形寬一些的範圍（-20 ~ 54），讓動畫開始/
-  // 結束時亮光可以完全滑出三角形範圍外，銜接更自然。
-  const gradient = document.createElementNS(svgNS, 'linearGradient');
-  gradient.setAttribute('id', gradId);
-  gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
-  gradient.setAttribute('x1', '-20');
-  gradient.setAttribute('y1', '0');
-  gradient.setAttribute('x2', '14');
-  gradient.setAttribute('y2', '0');
-  gradient.setAttribute('class', 'door-indicator-triangle-gradient');
-  const stops = [
-    ['0%', 'rgba(147,197,253,0)'],
-    ['35%', 'rgba(147,197,253,0.95)'],
-    ['50%', 'rgba(240,235,255,1)'],
-    ['65%', 'rgba(168,85,247,0.95)'],
-    ['100%', 'rgba(147,197,253,0)'],
-  ];
-  stops.forEach(([offset, color]) => {
-    const stop = document.createElementNS(svgNS, 'stop');
-    stop.setAttribute('offset', offset);
-    stop.setAttribute('stop-color', color);
-    gradient.appendChild(stop);
-  });
-
-  stops.forEach(([offset, color]) => {
-    const stop = document.createElementNS(svgNS, 'stop');
-    stop.setAttribute('offset', offset);
-    stop.setAttribute('stop-color', color);
-    gradient.appendChild(stop);
-  });
-
-  // ⚡ 用 SVG 原生的 <animateTransform> 移動漸層本身的位置，
-  // 相容性比 CSS animation 作用在 <linearGradient> 上更穩定。
-  // begin="indefinite"：預設不自動播放，等 triggerDoorHintAppear()
-  // 之類的重播邏輯呼叫 .beginElement() 才會真正開始播放一次。
-  const gradientAnim = document.createElementNS(svgNS, 'animateTransform');
-  gradientAnim.setAttribute('attributeName', 'gradientTransform');
-  gradientAnim.setAttribute('type', 'translate');
-  gradientAnim.setAttribute('from', '0 0');
-  gradientAnim.setAttribute('to', '34 0');
-  gradientAnim.setAttribute('dur', '0.9s');
-  gradientAnim.setAttribute('begin', 'indefinite');
-  gradientAnim.setAttribute('fill', 'freeze'); // 動畫結束後停在終點，避免跳回起點造成一閃
-  gradient.appendChild(gradientAnim);
-
-  defs.appendChild(gradient);
-  svg.appendChild(defs);
-
-  defs.appendChild(gradient);
-  svg.appendChild(defs);
-
-  // 底色三角形：固定的暗色底，隨時可見
-  const baseTriangle = document.createElementNS(svgNS, 'polygon');
-  baseTriangle.setAttribute('points', trianglePoints);
-  baseTriangle.setAttribute('class', 'door-indicator-triangle-base');
-  svg.appendChild(baseTriangle);
-
-  // 亮光三角形：跟底色完全同形狀、同位置，只是 fill 換成會滑動的漸層，
-  // 平常 opacity:0 看不到，播放動畫時才淡入、同時漸層本身左右滑動。
-  const sweepTriangle = document.createElementNS(svgNS, 'polygon');
-  sweepTriangle.setAttribute('points', trianglePoints);
-  sweepTriangle.setAttribute('class', 'door-indicator-triangle-sweep');
-  sweepTriangle.setAttribute('fill', `url(#${gradId})`);
-  svg.appendChild(sweepTriangle);
-
-  group.appendChild(svg);
-  root.appendChild(group);
-  wrapper.appendChild(root);
-
-  doorIndicatorInstances[name] = {
-    wrapper, root, group, svgEl: svg,
-    gradientAnimEl: gradientAnim, // ⚡ 觸發重播用
-    cssObject: null, isVisible: false, elapsed: 0,
-  };
-}
-
-// 一定要等 GLTF 載入完成、doorAnimations 都填好之後才能呼叫，
-// 建議直接接在 attachDoorHintsToScene(); 那一行後面一起呼叫。
-function attachDoorIndicatorsToScene() {
-  Object.keys(doorAnimations).forEach(name => {
-    if (!doorIndicatorInstances[name]) createDoorIndicator(name);
-    const inst = doorIndicatorInstances[name];
-    if (inst.cssObject) return;
-
-    const anim = doorAnimations[name];
-    if (!anim || !anim.mesh) return;
-
-    const cssObject = new CSS2DObject(inst.wrapper);
-    // ⚡ 不分門型，統一用門的本地中心點（水平＋垂直都置中）
-    const x = anim.indicatorLocalX ?? 0;
-    const y = anim.indicatorLocalY ?? DOOR_INDICATOR_HEIGHT_OFFSET;
-    cssObject.position.set(x, y, 0);
-
-    anim.mesh.add(cssObject);
-    inst.cssObject = cssObject;
-  });
-}
-
-const doorIndicatorStyleTag = document.createElement('style');
-doorIndicatorStyleTag.textContent = `
-.door-indicator-root {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 200ms ease-out;
-}
-.door-indicator-root.visible { opacity: 1; }
-
-.door-indicator-group {
-  position: relative;
-  width: 60px;
-  height: 30px;
-  transform-origin: center center;
-}
-
-.door-indicator-triangle-svg {
-  position: absolute;
-  left: 50%; top: 50%;
-  width: 34px; height: 26px;
-  transform: translate(-50%, -50%);
-  overflow: visible;
-  filter: drop-shadow(0 0 4px rgba(147,197,253,0.8));
-}
-.door-indicator-triangle-base {
-  fill: rgba(147,197,253,0.55);
-}
-.door-indicator-triangle-sweep {
-  opacity: 0;
-}
-.door-indicator-triangle-svg.playing .door-indicator-triangle-sweep {
-  animation: doorIndicatorTriangleSweepOpacity 0.9s ease-in-out;
-}
-@keyframes doorIndicatorTriangleSweepOpacity {
-  0%   { opacity: 0; }
-  8%   { opacity: 1; }
-  92%  { opacity: 1; }
-  100% { opacity: 0; }
-}
-.door-indicator-triangle-svg.playing .door-indicator-triangle-sweep {
-  animation: doorIndicatorTriangleSweep 0.9s ease-in-out;
-}
-@keyframes doorIndicatorTriangleSweep {
-  0%   { opacity: 0; transform: translateX(-18px); }
-  8%   { opacity: 1; }
-  50%  { opacity: 1; transform: translateX(0px); }
-  92%  { opacity: 1; }
-  100% { opacity: 0; transform: translateX(18px); }
-}
-`;
-document.head.appendChild(doorIndicatorStyleTag);
-
 // 建立葉子 DOM：wrap（定位錨點）→ mask（葉形裁切遮罩，固定旋轉角度）
 // → sweep（左右移動的亮光帶）。不再有實心葉子本體，只有裁切遮罩+
 // 移動中的亮光，兩層各自獨立管理座標基準，不會互相干擾。飄移動畫不在
@@ -4212,106 +3773,6 @@ function updateDoorHintsVisibility() {
   });
 }
 
-// ── 重複使用的暫存物件，避免每幀 new ──
-const _doorIndicatorAnchor = new THREE.Vector3();
-const _doorIndicatorP0 = new THREE.Vector3();
-const _doorIndicatorP1 = new THREE.Vector3();
-const _doorIndicatorInvMatrix = new THREE.Matrix4();
-const _doorIndicatorLocalCamera = new THREE.Vector3();
-const _doorIndicatorLocalCenter = new THREE.Vector3();
-const _doorIndicatorLocalSample = new THREE.Vector3();
-const _doorIndicatorWorldSample = new THREE.Vector3();
-
-function updateDoorIndicators(delta) {
-  // ⚡ 總開關關閉時：把目前還顯示中的指示器全部隱藏，並直接跳過所有計算，
-  // 不會浪費效能繼續算距離/角度。
-  if (!window.SHOW_DOOR_INDICATORS) {
-    Object.keys(doorIndicatorInstances).forEach(name => {
-      const inst = doorIndicatorInstances[name];
-      if (inst && inst.isVisible) {
-        inst.isVisible = false;
-        inst.root.classList.remove('visible');
-      }
-    });
-    return;
-  }
-
-  Object.keys(doorAnimations).forEach(name => {
-    const inst = doorIndicatorInstances[name];
-    const anim = doorAnimations[name];
-    if (!inst || !inst.cssObject || !anim) return;
-
-    if (anim.isOpen) {
-      if (inst.isVisible) {
-        inst.isVisible = false;
-        inst.root.classList.remove('visible');
-      }
-      return;
-    }
-
-    inst.cssObject.getWorldPosition(_doorIndicatorAnchor);
-    _doorIndicatorP0.copy(_doorIndicatorAnchor).project(camera);
-
-    const dist = camera.position.distanceTo(_doorIndicatorAnchor);
-    const inRange = dist <= DOOR_INDICATOR_RADIUS && _doorIndicatorP0.z < 1;
-
-    if (inRange !== inst.isVisible) {
-      inst.isVisible = inRange;
-      inst.root.classList.toggle('visible', inRange);
-      if (inRange) inst.elapsed = DOOR_INDICATOR_INTERVAL;
-    }
-    if (!inRange) return;
-
-    // ⚡ 用完整 matrixWorld（含旋轉＋縮放，能正確處理鏡射門）把攝影機位置
-    // 轉換回門的本地座標系，比較「厚度軸」上的分量，判斷camera站在哪一側——
-    // 哪一側比較近就自動指向哪一側，不需要每扇門手動設定正負號。
-    anim.mesh.updateMatrixWorld();
-    _doorIndicatorInvMatrix.copy(anim.mesh.matrixWorld).invert();
-    _doorIndicatorLocalCamera.copy(camera.position).applyMatrix4(_doorIndicatorInvMatrix);
-
-    _doorIndicatorLocalCenter.set(
-      anim.indicatorLocalX ?? 0,
-      anim.indicatorLocalY ?? 0,
-      0
-    );
-
-    // ⚡ 三角形指向「開門方向」，不是指向使用者站的那一側——
-    // 用回 getDoorOpenLocalDirection() 算出的本地開門方向向量，
-    // 從門的中心點往那個方向取樣一小段距離，再投影到螢幕算角度。
-    const openDirLocal = getDoorOpenLocalDirection(anim);
-    _doorIndicatorLocalSample.copy(_doorIndicatorLocalCenter)
-      .addScaledVector(openDirLocal, DOOR_INDICATOR_DIR_SAMPLE_DIST);
-    _doorIndicatorWorldSample.copy(_doorIndicatorLocalSample).applyMatrix4(anim.mesh.matrixWorld);
-    _doorIndicatorP1.copy(_doorIndicatorWorldSample).project(camera);
-
-    const sx0 = (_doorIndicatorP0.x + 1) / 2 * window.innerWidth;
-    const sy0 = (1 - _doorIndicatorP0.y) / 2 * window.innerHeight;
-    const sx1 = (_doorIndicatorP1.x + 1) / 2 * window.innerWidth;
-    const sy1 = (1 - _doorIndicatorP1.y) / 2 * window.innerHeight;
-
-    const dx = sx1 - sx0;
-    const dy = sy1 - sy0;
-    const angleDeg = (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6)
-      ? Math.atan2(dy, dx) * 180 / Math.PI
-      : 0;
-
-    inst.group.style.transform = `rotate(${angleDeg.toFixed(1)}deg)`;
-
-    inst.elapsed += delta;
-    if (inst.elapsed >= DOOR_INDICATOR_INTERVAL) {
-      inst.elapsed = 0;
-      // 透明度淡入淡出：CSS class 重播技巧
-      inst.svgEl.classList.remove('playing');
-      void inst.svgEl.offsetWidth;
-      inst.svgEl.classList.add('playing');
-      // ⚡ 漸層滑動：用 SVG 原生 API 主動重新觸發一次，
-      // beginElement() 會讓動畫從 from 重新播到 to。
-      if (inst.gradientAnimEl && inst.gradientAnimEl.beginElement) {
-        inst.gradientAnimEl.beginElement();
-      }
-    }
-  });
-}
 
 // ⚡ 把魚形提示掛到3D場景裡：跟濾心卡片（attachFilterCardsToScene）同一套做法，
 // 掛在裝置 mesh 本身上，一定要等 GLTF 模型載入完成、interactiveDevices
@@ -5236,13 +4697,6 @@ renderer.domElement.addEventListener('click', () => {
   drainFlows[cfg.drainKey]?.setActive(isNowActive);
   setFilterActive(targetName, isNowActive);
 
-  // ⚡ 水流音效：開水播放（如果還沒開始播），關水暫停（不用重建，暫停/播放成本極低）
-  const sound = deviceWaterSounds[targetName];
-  if (sound) {
-    if (isNowActive && !sound.isPlaying) sound.play();
-    else if (!isNowActive && sound.isPlaying) sound.stop();
-  }
-
   if (activeTimers[targetName]) {
     if (isNowActive) {
       activeTimers[targetName].startTime = Date.now();
@@ -5448,7 +4902,6 @@ function animate(nowMs) {
   // ⚡ 客廳門靠近提示：裝置數量少，每幀直接算一次距離即可，
   // 不需要額外的節流變數，詳見 updateDoorHintsVisibility() 上方的效能說明。
   updateDoorHintsVisibility();
-  updateDoorIndicators(delta);
 
   // 移動
   if (controls.isLocked) {
