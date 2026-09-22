@@ -825,7 +825,7 @@ class WaterFlow {
   update(delta) {
     if (!this.active) return;
     const gravity = -0.002;
-    const maxLife = this.type === 'faucet' ? 0.4 : 1.4; // 水柱距離
+    const maxLife = this.type === 'faucet' ? 0.3 : 1.4; // 水柱距離，原0.4 1.4
 
     for (let i = 0; i < this.count; i++) {
       this.lifetimes[i] += delta; // 末速度 = 初速度 + 加速度 * 時間
