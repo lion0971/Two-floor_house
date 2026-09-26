@@ -446,7 +446,7 @@ body {
 @media (max-width: 768px) {
   #instructions {
     pointer-events: auto;
-    width: 260px;
+    width: 300px;
     /* ⚡ 手機螢幕較窄，面板寬度稍微收窄，換取文字可以放大 */
     padding: 20px 24px;
     /* ⚡ 內距也稍微加大，避免放大後的文字太貼邊 */
@@ -461,16 +461,16 @@ body {
   /* ⚡ 新增：展開時直接放大文字，取代雙指縮放手勢（雙指已經用在前進/後退移動，
      兩者手勢會衝突，所以改用「展開就直接是放大版文字」，更直覺也不會誤觸移動） */
   #instructions h3 {
-    font-size: 20px;
+    font-size: 23px;
   }
 
   #instructions li {
-    font-size: 18px;
+    font-size: 21px;
     line-height: 2.1;
   }
 
   #instructions li strong {
-    min-width: 78px;
+    min-width: 90px;
     /* 字變大了，標籤欄寬也稍微加寬，避免文字擠在一起 */
   }
 }
