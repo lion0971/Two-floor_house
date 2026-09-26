@@ -48,7 +48,6 @@ const authReadyPromise = new Promise((resolve) => {
   });
 });
 
-const SHOW_WEATHER_PANEL_ON_LOAD = false; // ⚡ 設 false 暫時關閉載入完成的天氣預報面板，設 true 恢復
 const LINE_NOTIFY_ENABLED = true; // ★ 設 false 暫時關閉LINE連結通知，設 true 恢復
 // ★ 濾心用量是否要持久化存到 Firebase（跟 LINE_NOTIFY_ENABLED 分開，互不影響）：
 // 設 false 時，濾心用量只會在本機記憶體裡暫時計算，重新整理頁面就會歸零重算；
@@ -1739,110 +1738,6 @@ const instructions = document.getElementById('instructions');
 const instructionsFab = document.getElementById('instructions-fab');
 const instructionsCloseBtn = document.querySelector('.instructions-close-btn');
 
-// ─────────────────────────────────────────
-// ⚡ 新增：氣象資訊面板（天氣/溫度/濕度），貼在說明視窗右側，
-// 下載完成時從說明視窗後方往右滑開，按下「點擊畫面開始」自動收回。
-// ─────────────────────────────────────────
-const WEATHER_LAT = 25.0439;  // 國立臺北科技大學
-const WEATHER_LON = 121.5358;
-const WEATHER_UPDATE_INTERVAL_MS = 15 * 60 * 1000;
-
-function describeWeatherCode(code) {
-  if (code === 0) return '☀️ 晴天';
-  if (code <= 2) return '⛅ 多雲';
-  if (code === 3) return '☁️ 陰天';
-  if (code >= 45 && code <= 48) return '🌫️ 有霧';
-  if (code >= 51 && code <= 67) return '🌦️ 有雨';
-  if (code >= 71 && code <= 77) return '🌨️ 下雪';
-  if (code >= 80 && code <= 82) return '🌧️ 陣雨';
-  if (code >= 95) return '⛈️ 雷雨';
-  return '🌤️ 天氣';
-}
-
-function makeWeatherBox() {
-  const box = document.createElement('div');
-  Object.assign(box.style, {
-    background: 'rgba(18, 24, 38, 0.55)', // 跟 #instructions 同色系
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: '12px',
-    padding: '8px 14px',
-    color: '#f0f4f8',
-    fontSize: '13px',
-    whiteSpace: 'nowrap',
-    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
-  });
-  box.textContent = '讀取中...';
-  return box;
-}
-
-const weatherPanel = document.createElement('div');
-Object.assign(weatherPanel.style, {
-  position: 'fixed',
-  display: 'flex',
-  gap: '8px',
-  zIndex: '250',
-  pointerEvents: 'none',
-  opacity: '0',
-  transform: 'translateX(-60px)',
-  transition: 'transform 0.6s ease, opacity 0.6s ease',
-});
-const weatherBox = makeWeatherBox();
-const temperatureBox = makeWeatherBox();
-const humidityBox = makeWeatherBox();
-weatherPanel.appendChild(weatherBox);
-weatherPanel.appendChild(temperatureBox);
-weatherPanel.appendChild(humidityBox);
-document.body.appendChild(weatherPanel);
-
-function positionWeatherPanel() {
-  const rect = instructions.getBoundingClientRect();
-  weatherPanel.style.left = `${rect.right + 12}px`;
-  weatherPanel.style.bottom = `${window.innerHeight - rect.bottom}px`;
-}
-
-function showWeatherPanel() {
-  positionWeatherPanel();
-  weatherPanel.style.opacity = '1';
-  weatherPanel.style.transform = 'translateX(0)';
-}
-
-function hideWeatherPanel() {
-  weatherPanel.style.opacity = '0';
-  weatherPanel.style.transform = 'translateX(-60px)';
-}
-
-window.addEventListener('resize', () => {
-  if (weatherPanel.style.opacity === '1') positionWeatherPanel();
-});
-
-async function fetchWeather() {
-  try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,relative_humidity_2m,weather_code`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const current = data.current;
-    if (!current) return;
-
-    // 更新氣象面板 UI
-    weatherBox.textContent = describeWeatherCode(current.weather_code);
-    temperatureBox.textContent = `🌡️ ${Math.round(current.temperature_2m)}°C`;
-    humidityBox.textContent = `💧 ${Math.round(current.relative_humidity_2m)}%`;
-
-    // 同步給開門氣候提示邏輯使用
-    currentOutdoorTemp = current.temperature_2m;
-    currentOutdoorHumidity = current.relative_humidity_2m;
-  } catch (err) {
-    console.warn('[Weather] 取得氣象資料失敗', err);
-    weatherBox.textContent = '氣象資料暫時無法取得';
-  }
-}
-if (SHOW_WEATHER_PANEL_ON_LOAD) {
-  fetchWeather();
-  setInterval(fetchWeather, WEATHER_UPDATE_INTERVAL_MS);
-}
-
 instructions.classList.add('expanded'); // ⚡ 預設為展開狀態（下載完成後跟原本一樣完整顯示）
 // 這裡「不」把 fab 加上 .show，維持 CSS 預設的隱藏狀態即可（面板展開時 fab 本來就不該顯示）
 
@@ -1884,7 +1779,6 @@ function finishLoading() {
     labelRenderer.render(scene, camera);
 
     setTimeout(showTapPrompt, 5); // 150 → 50
-
   }, 300); // 600 → 300（前提：不小於 CSS .fade-out 的轉場秒數）
 }
 
@@ -2240,12 +2134,11 @@ let blackCoverFaded = false;
 function fadeOutBlackCover() {
   if (blackCoverFaded) return;
   blackCoverFaded = true;
-  sceneRenderEnabled = true;
+  sceneRenderEnabled = true; // ⚡ 開始淡出的同時，恢復場景渲染
   blackCover.style.opacity = '0';
   blackCover.addEventListener('transitionend', () => {
-    blackCover.remove();
-    if (SHOW_WEATHER_PANEL_ON_LOAD) showWeatherPanel(); // ⚡ 依開關決定要不要顯示天氣面板
-  }, { once: true });
+    blackCover.remove(); // 雖然 opacity: 0 讓你看不到它，但它依然佔用記憶體。動畫播放完後徹底 remove()，可以清空記憶體並保持 DOM 樹乾淨
+  }, { once: true }); // 告訴瀏覽器：「這個監聽事件只執行一次，執行完後請自動幫我註銷（解綁）這個事件」
 }
 
 // 進度百分比
@@ -2335,7 +2228,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
       return;
     }
 
-    if (!name.includes('sliding_door') && !isUpSlidingDoor && !isDownSlidingDoor) return;
+        if (!name.includes('sliding_door') && !isUpSlidingDoor && !isDownSlidingDoor) return;
     // 避免同一個名稱被重複登記（例如父物件跟唯一的子 mesh 剛好同名）
     if (doorAnimations[name]) return;
 
@@ -2712,7 +2605,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
     poolWaterMeshes.forEach(m => poolBounds.union(new THREE.Box3().setFromObject(m)));
   }
 
-  // ⚡ 自動量測 dining_table 的世界座標水平包圍盒，取代手動填寫座標，
+    // ⚡ 自動量測 dining_table 的世界座標水平包圍盒，取代手動填寫座標，
   // 避免之後桌子位置调整了還要回來改程式碼裡的數字。
   const diningTableMesh = cachedSceneMeshes.find(m => m.name.toLowerCase().includes('dining_table'))
     ?? gltf.scene.getObjectByName('dining_table'); // 保險：cachedSceneMeshes 篩選條件跟你實際命名可能不同，這裡多一層保險查找
@@ -3223,7 +3116,7 @@ function closeDeviceWater(deviceName) {
   drainFlows[cfg.drainKey]?.setActive(false);
   setFilterActive(deviceName, false);
 
-  // ⚡ 統一關水入口（涵蓋按鈕手動關閉/LINE遠端關閉），一併停止音效
+    // ⚡ 統一關水入口（涵蓋按鈕手動關閉/LINE遠端關閉），一併停止音效
   const sound = deviceWaterSounds[deviceName];
   if (sound && sound.isPlaying) sound.stop();
 
@@ -4319,293 +4212,6 @@ function updateDoorHintsVisibility() {
   });
 }
 
-let currentOutdoorTemp = null;
-let currentOutdoorHumidity = null;
-
-// ⚡ 不再網頁一載入就自動抓，也不用 setInterval 常駐運作。
-// 改成完全由「玩家第一次開門」這個動作，去啟動一整套「抓資料→顯示→
-// 每小時重複」的循環，門本身只負責按下這個啟動鈕，之後就跟門無關了。
-
-// ─────────────────────────────────────────
-// 智慧環境監測卡片（房屋圖示 + 溫濕度 + 狀態徽章，橫向排列）
-// ─────────────────────────────────────────
-const climateCardStyleTag = document.createElement('style');
-climateCardStyleTag.textContent = `
-.climate-card {
-  display: flex;
-  flex-direction: column;   /* ⚡ 改成直向堆疊 */
-  align-items: stretch;
-  gap: 0;
-  background: rgba(15, 20, 30, 0.55);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-right: none;              /* ⚡ 貼齊邊緣，右側邊框拿掉避免看起來卡卡的 */
-  border-radius: 16px 0 0 16px;    /* ⚡ 只保留左側圓角，右側改直角貼齊螢幕 */
-  padding: 16px 20px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
-  color: #f0f4f8;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  width: fit-content;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增：讓文字在各種背景下都看得更清楚 */
-}
-.climate-card-section {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;          /* ⚡ 改成上下留白，不再左右留白 */
-}
-.climate-card-section:first-child { padding-top: 0; }
-.climate-card-section:last-child { padding-bottom: 0; }
-.climate-card-divider {
-  width: 100%;               /* ⚡ 改成水平分隔線 */
-  height: 1px;
-  background: rgba(255,255,255,0.15);
-  flex-shrink: 0;
-}
-.climate-icon-ring {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: radial-gradient(circle, rgba(79,220,255,0.18) 0%, rgba(79,220,255,0.05) 65%, rgba(79,220,255,0) 100%);
-  border: 1px solid rgba(79,220,255,0.4);
-  box-shadow:
-    0 0 10px rgba(79,220,255,0.35),
-    inset 0 0 6px rgba(79,220,255,0.15);
-}
-.climate-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  color: #4fdcff;
-  filter: drop-shadow(0 0 3px rgba(79,220,255,0.6));
-}
-.climate-icon svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.climate-label-group { display: flex; flex-direction: column; gap: 2px; }
-.climate-title { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; }
-.climate-subtitle { font-size: 13px; color: #fff; white-space: nowrap; }
-.climate-value-label { font-size: 13px; color: #fff; white-space: nowrap; }
-.climate-value { font-size: 20px; font-weight: 700; color: #fff; white-space: nowrap; }
-.climate-status-label { font-size: 13px; color: #fff; margin-bottom: 6px; white-space: nowrap; }
-.climate-badges { display: flex; gap: 8px; }
-.climate-badges {
-  display: flex;
-  flex-direction: column;   /* ⚡ 徽章改成直向排列 */
-  gap: 6px;
-  align-items: flex-start;
-}
-.climate-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  border: 1.5px solid transparent;
-  box-sizing: border-box;
-  width: fit-content;   /* ⚡ 新增：徽章寬度貼合自己的文字內容，不會被父層拉伸撐寬 */
-}
-.climate-badge.ac {
-  background: rgba(79,220,255,0.14);
-  color: #7fe0ff;
-  border-color: rgba(79,220,255,0.85);
-  box-shadow: 0 0 10px rgba(79,220,255,0.45), inset 0 0 6px rgba(79,220,255,0.12);
-}
-.climate-badge.dehumid {
-  background: rgba(90,220,170,0.14);
-  color: #7fe8c0;
-  border-color: rgba(90,220,170,0.85);
-  box-shadow: 0 0 10px rgba(90,220,170,0.45), inset 0 0 6px rgba(90,220,170,0.12);
-}
-.climate-badge.ok {
-  background: rgba(255,255,255,0.08);
-  color: rgba(240,244,248,0.65);
-  border-color: rgba(255,255,255,0.15);
-}
-
-@media (max-width: 768px) {
-  .climate-card { padding: 10px 16px; gap: 0; }
-  .climate-card-section { padding: 0 12px; gap: 8px; }
-  .climate-icon-circle { width: 32px; height: 32px; font-size: 15px; }
-  .climate-value { font-size: 16px; }
-  .climate-subtitle, .climate-value-label, .climate-status-label { font-size: 10px; }
-}
-`;
-document.head.appendChild(climateCardStyleTag);
-
-const climatePanel = document.createElement('div');
-climatePanel.className = 'climate-card';
-Object.assign(climatePanel.style, {
-  position: 'fixed',
-  right: '0',
-  top: '50%',
-  transform: 'translate(80px, -50%)', // 初始藏在畫面右側外面
-  zIndex: '250',
-  pointerEvents: 'none',
-  opacity: '0',
-  transition: 'transform 0.6s ease, opacity 0.6s ease',
-});
-
-// 左：房屋圖示 + 標題
-const climateHomeSection = document.createElement('div');
-climateHomeSection.className = 'climate-card-section';
-// 左：房屋圖示 + 標題
-climateHomeSection.innerHTML = `
-  <div class="climate-icon-ring">
-    <div class="climate-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 12l9-9 9 9"/>
-        <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>
-      </svg>
-    </div>
-  </div>
-  <div class="climate-label-group">
-    <div class="climate-title">智慧環境監測</div>
-    <div class="climate-subtitle">室內環境</div>
-  </div>
-`;
-
-const climateDividerA = document.createElement('div');
-climateDividerA.className = 'climate-card-divider';
-
-// 中：溫度
-const climateTempSection = document.createElement('div');
-climateTempSection.className = 'climate-card-section';
-// 中：溫度
-climateTempSection.innerHTML = `
-  <div class="climate-icon-ring">
-    <div class="climate-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
-      </svg>
-    </div>
-  </div>
-  <div class="climate-label-group">
-    <div class="climate-value-label">現在溫度</div>
-    <div class="climate-value"><span class="climate-temp-value">--</span>°C</div>
-  </div>
-`;
-
-const climateDividerB = document.createElement('div');
-climateDividerB.className = 'climate-card-divider';
-
-// 中：濕度
-const climateHumiditySection = document.createElement('div');
-climateHumiditySection.className = 'climate-card-section';
-// 中：濕度
-climateHumiditySection.innerHTML = `
-  <div class="climate-icon-ring">
-    <div class="climate-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2.69s6 7.19 6 11.14a6 6 0 0 1-12 0c0-3.95 6-11.14 6-11.14z"/>
-      </svg>
-    </div>
-  </div>
-  <div class="climate-label-group">
-    <div class="climate-value-label">現在濕度</div>
-    <div class="climate-value"><span class="climate-humidity-value">--</span>%</div>
-  </div>
-`;
-
-const climateDividerC = document.createElement('div');
-climateDividerC.className = 'climate-card-divider';
-
-// 右：智慧環境狀態徽章
-const climateStatusSection = document.createElement('div');
-climateStatusSection.className = 'climate-card-section';
-climateStatusSection.innerHTML = `
-  <div class="climate-label-group">
-    <div class="climate-status-label">智慧環境狀態</div>
-    <div class="climate-badges"></div>
-  </div>
-`;
-
-climatePanel.appendChild(climateHomeSection);
-climatePanel.appendChild(climateDividerA);
-climatePanel.appendChild(climateTempSection);
-climatePanel.appendChild(climateDividerB);
-climatePanel.appendChild(climateHumiditySection);
-climatePanel.appendChild(climateDividerC);
-climatePanel.appendChild(climateStatusSection);
-document.body.appendChild(climatePanel);
-
-const climateTempValueEl = climateTempSection.querySelector('.climate-temp-value');
-const climateHumidityValueEl = climateHumiditySection.querySelector('.climate-humidity-value');
-const climateBadgesEl = climateStatusSection.querySelector('.climate-badges');
-
-// ── 依溫濕度決定要顯示哪些狀態徽章 ──
-function getClimateStatusBadges(temp, humidity) {
-  const badges = [];
-  if (temp > 28) badges.push({ cls: 'ac', icon: '❄️', text: '已開啟冷氣' });
-  if (humidity > 60) badges.push({ cls: 'dehumid', icon: '💧', text: '已開啟除濕' });
-  if (badges.length === 0) badges.push({ cls: 'ok', icon: '✅', text: '環境舒適' });
-  return badges;
-}
-
-let climateHideTimer = null;
-
-function showClimateHintBoxes() {
-  if (currentOutdoorTemp === null || currentOutdoorHumidity === null) {
-    climateTempValueEl.textContent = '--';
-    climateHumidityValueEl.textContent = '--';
-    climateBadgesEl.innerHTML = `<div class="climate-badge ok">⚙️ 讀取中...</div>`;
-  } else {
-    climateTempValueEl.textContent = Math.round(currentOutdoorTemp);
-    climateHumidityValueEl.textContent = Math.round(currentOutdoorHumidity);
-    const badges = getClimateStatusBadges(currentOutdoorTemp, currentOutdoorHumidity);
-    climateBadgesEl.innerHTML = badges
-      .map(b => `<div class="climate-badge ${b.cls}">${b.icon} ${b.text}</div>`)
-      .join('');
-  }
-
-  climatePanel.style.opacity = '1';
-  climatePanel.style.transform = 'translate(0, -50%)';   // ⚡ 改回右側滑入終點
-
-  clearTimeout(climateHideTimer);
-  climateHideTimer = setTimeout(() => {
-    climatePanel.style.opacity = '0';
-    climatePanel.style.transform = 'translate(80px, -50%)'; // ⚡ 改回滑出到右側外面
-  }, 5000);
-}
-
-const CLIMATE_HINT_DOORS = new Set(DOOR_HINT_DEVICES.map(d => d.name));
-const CLIMATE_MONITOR_INTERVAL_MS = 60 * 60 * 1000; // 每隔1小時偵測一次
-let climateMonitorStarted = false; // 這套「每小時偵測」的循環是否已經啟動過
-
-// ⚡ 真正的監控循環：抓最新氣象資料 → 顯示面板。
-// 啟動之後會自己每隔1小時重複執行，不再需要任何人（門）去觸發它。
-async function runClimateMonitorCycle() {
-  await fetchWeather(); // 先抓最新資料，確保這次顯示的是即時數值
-  showClimateHintBoxes();
-}
-
-// ⚡ 開門只負責「啟動」這個循環，而且整趟遊戲只會啟動一次；
-// 啟動之後，門再開幾次都跟這套循環無關了。
-function tryStartClimateMonitorOnDoorOpen(doorName) {
-  if (climateMonitorStarted) return; // 已經啟動過了，開門不會再做任何事
-
-  const partners = DOOR_PARTNER_MAP[doorName] || [];
-  const affectedNames = [doorName, ...partners];
-  const isTriggerDoor = affectedNames.some(name => CLIMATE_HINT_DOORS.has(name));
-  if (!isTriggerDoor) return;
-
-  climateMonitorStarted = true;
-  runClimateMonitorCycle(); // 立刻執行第一次
-  setInterval(runClimateMonitorCycle, CLIMATE_MONITOR_INTERVAL_MS); // 之後每小時自動重複
-}
-
 // ── 重複使用的暫存物件，避免每幀 new ──
 const _doorIndicatorAnchor = new THREE.Vector3();
 const _doorIndicatorP0 = new THREE.Vector3();
@@ -5521,8 +5127,7 @@ renderer.domElement.addEventListener('click', () => {
 
   if (!controls.isLocked) {
     hideTapPrompt();
-    hideWeatherPanel(); // ⚡ 新增
-    fadeOutBlackCover();
+    fadeOutBlackCover(); // ⚡ 使用者點擊時也主動確保渲染已開啟，避免手滑秒點造成畫面空窗
     controls.lock();
     return;
   }
@@ -5565,12 +5170,6 @@ renderer.domElement.addEventListener('click', () => {
       const namesAffected = [doorName, ...partners];
       if (DOOR_HINT_DEVICES.some(d => namesAffected.includes(d.name))) {
         dismissDoorHintPermanently();
-      }
-
-      // ⚡ 修改：門被「打開」時，只負責啟動每小時一次的溫濕度監控循環，
-      // 只會啟動一次，啟動後不再需要玩家開門才會顯示。
-      if (newIsOpen) {
-        tryStartClimateMonitorOnDoorOpen(doorName);
       }
     }
     return;
@@ -6114,9 +5713,10 @@ if (isMobile) {
         }
         if (!isMobileLocked) {
           hideTapPrompt();
-          hideWeatherPanel(); // ⚡ 新增
           fadeOutBlackCover();
           mobileLock();
+          // ⚡ 只有手機在按下「點擊畫面開始」時才自動收合說明面板：
+          // 移除 expanded（面板縮小消失），並讓左下角的 fab 收合按鈕顯示出來
           instructions.classList.remove('expanded');
           if (instructionsFab) instructionsFab.classList.add('show');
           return;

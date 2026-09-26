@@ -48,7 +48,6 @@ const authReadyPromise = new Promise((resolve) => {
   });
 });
 
-const SHOW_WEATHER_PANEL_ON_LOAD = false; // ⚡ 設 false 暫時關閉載入完成的天氣預報面板，設 true 恢復
 const LINE_NOTIFY_ENABLED = true; // ★ 設 false 暫時關閉LINE連結通知，設 true 恢復
 // ★ 濾心用量是否要持久化存到 Firebase（跟 LINE_NOTIFY_ENABLED 分開，互不影響）：
 // 設 false 時，濾心用量只會在本機記憶體裡暫時計算，重新整理頁面就會歸零重算；
@@ -1838,10 +1837,8 @@ async function fetchWeather() {
     weatherBox.textContent = '氣象資料暫時無法取得';
   }
 }
-if (SHOW_WEATHER_PANEL_ON_LOAD) {
-  fetchWeather();
-  setInterval(fetchWeather, WEATHER_UPDATE_INTERVAL_MS);
-}
+fetchWeather();
+setInterval(fetchWeather, WEATHER_UPDATE_INTERVAL_MS);
 
 instructions.classList.add('expanded'); // ⚡ 預設為展開狀態（下載完成後跟原本一樣完整顯示）
 // 這裡「不」把 fab 加上 .show，維持 CSS 預設的隱藏狀態即可（面板展開時 fab 本來就不該顯示）
@@ -2240,11 +2237,11 @@ let blackCoverFaded = false;
 function fadeOutBlackCover() {
   if (blackCoverFaded) return;
   blackCoverFaded = true;
-  sceneRenderEnabled = true;
+  sceneRenderEnabled = true; // ⚡ 開始淡出的同時，恢復場景渲染
   blackCover.style.opacity = '0';
   blackCover.addEventListener('transitionend', () => {
     blackCover.remove();
-    if (SHOW_WEATHER_PANEL_ON_LOAD) showWeatherPanel(); // ⚡ 依開關決定要不要顯示天氣面板
+    showWeatherPanel(); // ⚡ 新增：黑幕完全淡出消失後，氣象面板才滑出，避免在葉子動畫播放期間就先出現破壞美感
   }, { once: true });
 }
 
@@ -4340,14 +4337,12 @@ climateCardStyleTag.textContent = `
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255,255,255,0.12);
-  border-right: none;              /* ⚡ 貼齊邊緣，右側邊框拿掉避免看起來卡卡的 */
-  border-radius: 16px 0 0 16px;    /* ⚡ 只保留左側圓角，右側改直角貼齊螢幕 */
+  border-radius: 16px;
   padding: 16px 20px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.35);
   color: #f0f4f8;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  width: fit-content;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增：讓文字在各種背景下都看得更清楚 */
+  min-width: 190px;
 }
 .climate-card-section {
   display: flex;
@@ -4363,40 +4358,25 @@ climateCardStyleTag.textContent = `
   background: rgba(255,255,255,0.15);
   flex-shrink: 0;
 }
-.climate-icon-ring {
-  position: relative;
+.climate-icon-circle {
   width: 40px;
   height: 40px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 18px;
   flex-shrink: 0;
-  background: radial-gradient(circle, rgba(79,220,255,0.18) 0%, rgba(79,220,255,0.05) 65%, rgba(79,220,255,0) 100%);
-  border: 1px solid rgba(79,220,255,0.4);
-  box-shadow:
-    0 0 10px rgba(79,220,255,0.35),
-    inset 0 0 6px rgba(79,220,255,0.15);
 }
-.climate-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  color: #4fdcff;
-  filter: drop-shadow(0 0 3px rgba(79,220,255,0.6));
-}
-.climate-icon svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
+.climate-icon-circle.home { background: rgba(120,170,255,0.18); color: #8fb8ff; }
+.climate-icon-circle.temp { background: rgba(255,150,90,0.18); color: #ff9d5c; }
+.climate-icon-circle.humidity { background: rgba(79,220,255,0.18); color: #4fdcff; }
 .climate-label-group { display: flex; flex-direction: column; gap: 2px; }
 .climate-title { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; }
-.climate-subtitle { font-size: 13px; color: #fff; white-space: nowrap; }
-.climate-value-label { font-size: 13px; color: #fff; white-space: nowrap; }
+.climate-subtitle { font-size: 11px; color: rgba(240,244,248,0.55); white-space: nowrap; }
+.climate-value-label { font-size: 11px; color: rgba(240,244,248,0.55); white-space: nowrap; }
 .climate-value { font-size: 20px; font-weight: 700; color: #fff; white-space: nowrap; }
-.climate-status-label { font-size: 13px; color: #fff; margin-bottom: 6px; white-space: nowrap; }
+.climate-status-label { font-size: 11px; color: rgba(240,244,248,0.55); margin-bottom: 6px; white-space: nowrap; }
 .climate-badges { display: flex; gap: 8px; }
 .climate-badges {
   display: flex;
@@ -4404,36 +4384,9 @@ climateCardStyleTag.textContent = `
   gap: 6px;
   align-items: flex-start;
 }
-.climate-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  border: 1.5px solid transparent;
-  box-sizing: border-box;
-  width: fit-content;   /* ⚡ 新增：徽章寬度貼合自己的文字內容，不會被父層拉伸撐寬 */
-}
-.climate-badge.ac {
-  background: rgba(79,220,255,0.14);
-  color: #7fe0ff;
-  border-color: rgba(79,220,255,0.85);
-  box-shadow: 0 0 10px rgba(79,220,255,0.45), inset 0 0 6px rgba(79,220,255,0.12);
-}
-.climate-badge.dehumid {
-  background: rgba(90,220,170,0.14);
-  color: #7fe8c0;
-  border-color: rgba(90,220,170,0.85);
-  box-shadow: 0 0 10px rgba(90,220,170,0.45), inset 0 0 6px rgba(90,220,170,0.12);
-}
-.climate-badge.ok {
-  background: rgba(255,255,255,0.08);
-  color: rgba(240,244,248,0.65);
-  border-color: rgba(255,255,255,0.15);
-}
+.climate-badge.ac { background: rgba(79,220,255,0.16); color: #7fe0ff; border-color: rgba(79,220,255,0.35); }
+.climate-badge.dehumid { background: rgba(90,220,170,0.16); color: #7fe8c0; border-color: rgba(90,220,170,0.35); }
+.climate-badge.ok { background: rgba(255,255,255,0.08); color: rgba(240,244,248,0.65); border-color: rgba(255,255,255,0.15); }
 
 @media (max-width: 768px) {
   .climate-card { padding: 10px 16px; gap: 0; }
@@ -4449,7 +4402,7 @@ const climatePanel = document.createElement('div');
 climatePanel.className = 'climate-card';
 Object.assign(climatePanel.style, {
   position: 'fixed',
-  right: '0',
+  right: '28px',
   top: '50%',
   transform: 'translate(80px, -50%)', // 初始藏在畫面右側外面
   zIndex: '250',
@@ -4461,16 +4414,8 @@ Object.assign(climatePanel.style, {
 // 左：房屋圖示 + 標題
 const climateHomeSection = document.createElement('div');
 climateHomeSection.className = 'climate-card-section';
-// 左：房屋圖示 + 標題
 climateHomeSection.innerHTML = `
-  <div class="climate-icon-ring">
-    <div class="climate-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 12l9-9 9 9"/>
-        <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>
-      </svg>
-    </div>
-  </div>
+  <div class="climate-icon-circle home">🏠</div>
   <div class="climate-label-group">
     <div class="climate-title">智慧環境監測</div>
     <div class="climate-subtitle">室內環境</div>
@@ -4483,15 +4428,8 @@ climateDividerA.className = 'climate-card-divider';
 // 中：溫度
 const climateTempSection = document.createElement('div');
 climateTempSection.className = 'climate-card-section';
-// 中：溫度
 climateTempSection.innerHTML = `
-  <div class="climate-icon-ring">
-    <div class="climate-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
-      </svg>
-    </div>
-  </div>
+  <div class="climate-icon-circle temp">🌡️</div>
   <div class="climate-label-group">
     <div class="climate-value-label">現在溫度</div>
     <div class="climate-value"><span class="climate-temp-value">--</span>°C</div>
@@ -4504,15 +4442,8 @@ climateDividerB.className = 'climate-card-divider';
 // 中：濕度
 const climateHumiditySection = document.createElement('div');
 climateHumiditySection.className = 'climate-card-section';
-// 中：濕度
 climateHumiditySection.innerHTML = `
-  <div class="climate-icon-ring">
-    <div class="climate-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2.69s6 7.19 6 11.14a6 6 0 0 1-12 0c0-3.95 6-11.14 6-11.14z"/>
-      </svg>
-    </div>
-  </div>
+  <div class="climate-icon-circle humidity">💧</div>
   <div class="climate-label-group">
     <div class="climate-value-label">現在濕度</div>
     <div class="climate-value"><span class="climate-humidity-value">--</span>%</div>
@@ -4577,7 +4508,7 @@ function showClimateHintBoxes() {
   climateHideTimer = setTimeout(() => {
     climatePanel.style.opacity = '0';
     climatePanel.style.transform = 'translate(80px, -50%)'; // ⚡ 改回滑出到右側外面
-  }, 5000);
+  }, 3000);
 }
 
 const CLIMATE_HINT_DOORS = new Set(DOOR_HINT_DEVICES.map(d => d.name));
