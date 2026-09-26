@@ -4440,12 +4440,12 @@ climateCardStyleTag.textContent = `
   .climate-card-section { padding: 8px 0; gap: 10px; }
   .climate-icon-ring { width: 34px; height: 34px; }
   .climate-icon { width: 18px; height: 18px; }
-  .climate-title { font-size: 15px; }
+  .climate-title { font-size: 17px; }
   .climate-value { font-size: 18px; }         /* ⚡ 原本 16px */
   .climate-subtitle,
   .climate-value-label,
-  .climate-status-label { font-size: 13px; }  /* ⚡ 原本 10px，太小 */
-  .climate-badge { font-size: 13px; padding: 7px 16px; }
+  .climate-status-label { font-size: 15px; }  /* ⚡ 原本 10px，太小 */
+  .climate-badge { font-size: 14px; padding: 7px 16px; }
 }
 `;
 document.head.appendChild(climateCardStyleTag);
