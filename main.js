@@ -4488,16 +4488,17 @@ climateCardStyleTag.textContent = `
     gap: 8px !important;
   }
 }
-
-/* ⚡ 新增：極窄螢幕時，徽章改回上下堆疊，避免橫向擠壓過度換行造成排版凌亂 */
-@media (max-width: 400px) {
-  .climate-badges {
-    flex-direction: column !important;
-    gap: 6px !important;
-    align-items: flex-start !important;
-  }
-}
 `;
+
+// /* ⚡ 新增：極窄螢幕時，徽章改回上下堆疊，避免橫向擠壓過度換行造成排版凌亂 */
+// @media (max-width: 400px) {
+//   .climate-badges {
+//     flex-direction: column !important;
+//     gap: 6px !important;
+//     align-items: flex-start !important;
+//   }
+// }
+
 document.head.appendChild(climateCardStyleTag);
 
 const climatePanel = document.createElement('div');
