@@ -3003,7 +3003,6 @@ function toggleXRayMode(enable) {
 
     sliderWrap.style.opacity = '0';
     sliderWrap.style.pointerEvents = 'none';
-    setClimatePanelInstantVisible(false); // ⚡ 新增：進入透視模式時，比照滑桿隱藏溫濕度視窗
   } else {
     if (daySliderValueBeforeXRay !== null) {
       daySlider.value = daySliderValueBeforeXRay;
@@ -4349,13 +4348,6 @@ climateCardStyleTag.textContent = `
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   width: fit-content;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增：讓文字在各種背景下都看得更清楚 */
-  transition: transform 0.6s ease, opacity 0.6s ease;
-  opacity: 0;
-  transform: translate(80px, -50%);   /* 桌機版：預設隱藏狀態（貼右側外面） */
-}
-.climate-card.is-visible {
-  opacity: 1;
-  transform: translate(0, -50%);       /* 桌機版：顯示狀態（貼右側） */
 }
 .climate-card-section {
   display: flex;
@@ -4451,54 +4443,54 @@ climateCardStyleTag.textContent = `
 }
 
 @media (max-width: 768px) {
-  .climate-card { padding: 10px 16px; gap: 0; }
-  .climate-card-section { padding: 0 12px; gap: 8px; }
-  .climate-icon-ring { width: 32px; height: 32px; }
-  .climate-icon { width: 16px; height: 16px; }
+  .climate-card { padding: 12px 18px; gap: 0; }
+  .climate-card-section { padding: 8px 0; gap: 10px; }
+  .climate-icon-ring { width: 34px; height: 34px; }
+  .climate-icon { width: 18px; height: 18px; }
+  .climate-title { font-size: 15px; }
+  .climate-value { font-size: 18px; }         /* ⚡ 原本 16px */
+  .climate-subtitle,
+  .climate-value-label,
+  .climate-badge { font-size: 13px; padding: 7px 16px; }
 
+  /* ⚡ 新增：手機版改成橫向排列，貼在畫面上方，避免擋住視線 */
   .climate-card {
     flex-direction: row !important;
-    flex-wrap: wrap !important;                    /* ⚡ 新增：塞不下時自動換行 */
     align-items: center !important;
     right: auto !important;
     left: 50% !important;
     top: 10px !important;
     bottom: auto !important;
     width: max-content !important;
-    max-width: calc(100vw - 24px) !important;       /* ⚡ 新增：寬度上限，左右各留12px邊距 */
-    row-gap: 6px !important;                          /* ⚡ 新增：換行後的行距 */
-    border-radius: 16px !important;                        /* ⚡ 新增：手機版恢復四個角都是圓角 */
-    border: 1px solid rgba(255,255,255,0.12) !important;   /* ⚡ 新增：手機版恢復完整邊框 */
-    transform: translate(-50%, -140%); /* 手機版：預設隱藏狀態（貼上方外面） */
-  }
-  .climate-card.is-visible {
-    transform: translate(-50%, 0);     /* 手機版：顯示狀態（貼上方） */
   }
   .climate-card-section {
-    padding: 0 12px !important;
+    padding: 0 12px !important;   /* ⚡ 改回左右留白，取代直向版的上下留白 */
   }
   .climate-card-section:first-child { padding-left: 0 !important; }
   .climate-card-section:last-child { padding-right: 0 !important; }
   .climate-card-divider {
-    width: 1px !important;
+    width: 1px !important;         /* ⚡ 改回直線分隔線 */
     height: 30px !important;
   }
   .climate-badges {
-    flex-direction: row !important;
+    flex-direction: row !important; /* ⚡ 徽章也改成橫向並排，跟橫向版面搭配 */
     gap: 8px !important;
-  }
-}
-
-/* ⚡ 新增：極窄螢幕時，徽章改回上下堆疊，避免橫向擠壓過度換行造成排版凌亂 */
-@media (max-width: 400px) {
-  .climate-badges {
-    flex-direction: column !important;
-    gap: 6px !important;
-    align-items: flex-start !important;
   }
 }
 `;
 document.head.appendChild(climateCardStyleTag);
+
+// ⚡ 新增：判斷目前是否為手機版面（跟 CSS 斷點一致）
+function isMobileClimateLayout() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+// ⚡ 新增：依裝置決定「隱藏時」跟「顯示時」該用哪組 transform
+function getClimateHiddenTransform() {
+  return isMobileClimateLayout() ? 'translate(-50%, -140%)' : 'translate(80px, -50%)';
+}
+function getClimateShownTransform() {
+  return isMobileClimateLayout() ? 'translate(-50%, 0)' : 'translate(0, -50%)';
+}
 
 const climatePanel = document.createElement('div');
 climatePanel.className = 'climate-card';
@@ -4506,10 +4498,11 @@ Object.assign(climatePanel.style, {
   position: 'fixed',
   right: '0',
   top: '50%',
+  transform: getClimateHiddenTransform(), // ⚡ 把原本寫死的 'translate(80px, -50%)' 改成呼叫這個函式
   zIndex: '250',
   pointerEvents: 'none',
-  // ⚡ transform / opacity / transition 都交給 CSS 的 .climate-card / .climate-card.is-visible 控制，
-  // 不再由 JS 寫死，這樣切換斷點時瀏覽器會自動套用對應的 CSS，不需要 resize 監聽
+  opacity: '0',
+  transition: 'transform 0.6s ease, opacity 0.6s ease',
 });
 
 // 左：房屋圖示 + 標題
@@ -4623,24 +4616,14 @@ function showClimateHintBoxes() {
       .join('');
   }
 
-  climatePanel.classList.add('is-visible'); // ⚡ 改成加 class
+  climatePanel.style.opacity = '1';
+  climatePanel.style.transform = getClimateShownTransform();   // ← 改成呼叫函式
 
   clearTimeout(climateHideTimer);
   climateHideTimer = setTimeout(() => {
-    climatePanel.classList.remove('is-visible'); // ⚡ 改成移除 class
+    climatePanel.style.opacity = '0';
+    climatePanel.style.transform = getClimateHiddenTransform(); // ← 改成呼叫函式
   }, 5000);
-}
-
-// ⚡ 新增：立即切換溫濕度視窗顯示狀態（跳過滑入/滑出動畫），
-// 供「雙擊開啟選單」等跟 sliderWrap 同步顯示的情境使用；
-// 跟原本開門觸發的 showClimateHintBoxes() 動畫邏輯是兩套獨立機制。
-function setClimatePanelInstantVisible(visible) {
-  const prevTransition = climatePanel.style.transition;
-  climatePanel.style.transition = 'none'; // 暫時關閉動畫
-  clearTimeout(climateHideTimer);
-  climatePanel.classList.toggle('is-visible', visible); // ⚡ 改成切換 class
-  void climatePanel.offsetWidth; // 強制 reflow，讓 transition:none 立刻生效
-  climatePanel.style.transition = prevTransition || '';
 }
 
 const CLIMATE_HINT_DOORS = new Set(DOOR_HINT_DEVICES.map(d => d.name));
@@ -5561,7 +5544,6 @@ const controls = new PointerLockControls(camera, renderer.domElement);
 controls.addEventListener('lock', () => {
   sliderWrap.style.opacity = '0';
   sliderWrap.style.pointerEvents = 'none';
-  setClimatePanelInstantVisible(false); // ⚡ 新增：滑桿收起時，溫濕度視窗同步立即隱藏
 });
 
 controls.addEventListener('unlock', () => {
@@ -5569,7 +5551,6 @@ controls.addEventListener('unlock', () => {
     if (!isXRayMode) {
       sliderWrap.style.opacity = '1';
       sliderWrap.style.pointerEvents = 'auto';
-      setClimatePanelInstantVisible(true); // ⚡ 新增：滑桿收起時，溫濕度視窗同步立即隱藏
     }
     if (!unlockFromButton) {
       menuPanel.style.display = 'flex';
@@ -6077,7 +6058,6 @@ if (isMobile) {
     // 觸發 controls 的 lock 事件讓 UI 同步（隱藏滑桿）
     sliderWrap.style.opacity = '0';
     sliderWrap.style.pointerEvents = 'none';
-    setClimatePanelInstantVisible(false); // ⚡ 新增
   }
 
   function mobileUnlock() {
@@ -6086,7 +6066,6 @@ if (isMobile) {
     if (warningModal.style.display !== 'block' && !isXRayMode) {
       sliderWrap.style.opacity = '1';
       sliderWrap.style.pointerEvents = 'auto';
-      setClimatePanelInstantVisible(true); // ⚡ 新增
     }
   }
 
