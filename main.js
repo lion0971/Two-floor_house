@@ -152,6 +152,10 @@ let collidableObjects = [];
 // （中心點+半徑），在 GLTF 載入完成後由 loader.load() 的 callback 填入，
 // 供 checkCurrentCollision() / resolveCollisionSlide() 做「距離篩選」用，
 // 詳見填入的地方的註解說明。
+
+// 遮擋魚動畫
+const hintOccluders = []; // ⚡ 提示遮擋用：名稱含 wall 的 mesh
+
 let collidableSpheres = [];
 let strictCollidableSpheres = [];
 
@@ -327,6 +331,7 @@ const DINING_TABLE_BOUNDS = {
   minZ: 0,
   maxZ: 0,
   margin: 0.1, // 額外緩衝，避免貼著桌緣時被夾住
+  maxY: 2.5, // ⚡ 新增：攝影機高度超過這個值（公尺）就不套用桌子碰撞，數值不對再自己微調
 };
 window.DINING_TABLE_BOUNDS = DINING_TABLE_BOUNDS; // 方便 console 微調除錯
 
@@ -1419,6 +1424,7 @@ function resolveStaircaseCylinderCollision(moveVelocity) {
 function resolveDiningTableCollision(moveVelocity) {
   const b = DINING_TABLE_BOUNDS;
   if (b.minX === b.maxX) return; // 尚未量測成功，跳過
+  if (camera.position.y > b.maxY) return; // ⚡ 新增：站在比這個高度更高的位置（例如二樓）就不擋
 
   const nextX = camera.position.x + moveVelocity.x;
   const nextZ = camera.position.z + moveVelocity.z;
@@ -2663,6 +2669,9 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
       if (mesh.geometry && !mesh.geometry.boundsTree) {
         mesh.geometry.computeBoundsTree();
       }
+    }
+    if (nameForCollision.includes('wall')) {
+      hintOccluders.push(mesh); // ⚡ 新增
     }
     if (STRICT_COLLISION_NAMES.has(name) || STRICT_COLLISION_NAMES.has(parentName)) {
       strictCollidableObjects.push(mesh);
@@ -4817,6 +4826,18 @@ function dismissSwitchHint(device) {
   setSwitchHintVisible(device, false);
 }
 
+const _hintRaycaster = new THREE.Raycaster();
+_hintRaycaster.firstHitOnly = true; // ⚡ BVH 只回傳最近一個交點，更快
+const _hintDir = new THREE.Vector3();
+
+function isHintOccluded(targetPos, dist) {
+  if (hintOccluders.length === 0) return false;
+  _hintDir.copy(targetPos).sub(camera.position).normalize();
+  _hintRaycaster.set(camera.position, _hintDir);
+  _hintRaycaster.far = Math.max(0, dist - 0.1); // 只檢查「攝影機到開關」這一段
+  return _hintRaycaster.intersectObjects(hintOccluders, false).length > 0;
+}
+
 // ⚡ 節流：每 SWITCH_HINT_CHECK_INTERVAL 秒才對每個開關算一次距離，
 // 不是每一幀都算。裝置數量有限（目前8個），成本可忽略，但保留節流
 // 給移動裝置/低階顯卡多一點安全邊際。
@@ -4827,17 +4848,16 @@ function updateSwitchHintVisibility() {
 
     hint.cssObject.getWorldPosition(_switchHintWorldPos);
     const dist = camera.position.distanceTo(_switchHintWorldPos);
-    const inRange = dist <= SWITCH_HINT_RADIUS;
+    const inDistance = dist <= SWITCH_HINT_RADIUS;
 
-    // 🔧 暫時除錯用：印出每個開關目前的距離跟是否該顯示。排查完可拿掉整個 if 區塊。
-    if (window.__SWITCH_HINT_DEBUG__) {
-      console.log(`[SwitchHint] ${device} 距離=${dist.toFixed(2)}m inRange=${inRange} dismissed=${hint.dismissedUntilLeave}`);
+    if (!inDistance) {
+      hint.dismissedUntilLeave = false; // 離開範圍才解除「按過先不彈」
     }
 
-    if (!inRange) {
-      hint.dismissedUntilLeave = false; // 離開範圍後解除「按過先不彈」的標記
-    }
-    setSwitchHintVisible(device, inRange && !hint.dismissedUntilLeave);
+    // ⚡ 距離夠近才做射線檢查，太遠的直接跳過，省成本
+    const occluded = inDistance && isHintOccluded(_switchHintWorldPos, dist);
+
+    setSwitchHintVisible(device, inDistance && !occluded && !hint.dismissedUntilLeave);
   });
 }
 
