@@ -49,6 +49,7 @@ const authReadyPromise = new Promise((resolve) => {
 });
 
 const SHOW_WEATHER_PANEL_ON_LOAD = false; // ⚡ 設 false 暫時關閉載入完成的天氣預報面板，設 true 恢復
+const SHOW_CLIMATE_PANEL_IN_MENU = false; // ⚡ 設 false 暫時不在雙擊選單/滑桿出現時顯示溫濕度視窗，設 true 恢復
 const LINE_NOTIFY_ENABLED = true; // ★ 設 false 暫時關閉LINE連結通知，設 true 恢復
 // ★ 濾心用量是否要持久化存到 Firebase（跟 LINE_NOTIFY_ENABLED 分開，互不影響）：
 // 設 false 時，濾心用量只會在本機記憶體裡暫時計算，重新整理頁面就會歸零重算；
@@ -4637,14 +4638,15 @@ function showClimateHintBoxes() {
 
   clearTimeout(climateHideTimer);
   climateHideTimer = setTimeout(() => {
-    climatePanel.classList.remove('is-visible'); // ⚡ 改成移除 class
-  }, 5000);
+    climatePanel.classList.remove('is-visible');
+  }, 3500); // 溫溼度視窗秒數
 }
 
 // ⚡ 新增：立即切換溫濕度視窗顯示狀態（跳過滑入/滑出動畫），
 // 供「雙擊開啟選單」等跟 sliderWrap 同步顯示的情境使用；
 // 跟原本開門觸發的 showClimateHintBoxes() 動畫邏輯是兩套獨立機制。
 function setClimatePanelInstantVisible(visible) {
+  if (!SHOW_CLIMATE_PANEL_IN_MENU) return; // ⚡ 新增：開關關閉時，整個函式直接跳過
   const prevTransition = climatePanel.style.transition;
   climatePanel.style.transition = 'none'; // 暫時關閉動畫
   clearTimeout(climateHideTimer);
