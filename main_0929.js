@@ -1688,8 +1688,6 @@ const manager = new THREE.LoadingManager(); // 製作「載入中...（Loading..
 const AUDIO_FILES = {
   faucet: 'audio/faucet_loop.ogg',
   shower: 'audio/shower_loop.ogg',
-  swim: 'audio/swim.ogg',
-  splash: 'audio/splash.ogg',   // ⚡ 新增：入水/出水一次性水聲
 };
 
 const audioLoader = new THREE.AudioLoader(manager); // 掛進 manager，跟其他資源一起算進載入進度
@@ -1733,67 +1731,6 @@ function createDeviceWaterSound(deviceName) {
 
   deviceWaterSounds[deviceName] = sound;
 }
-
-let splashSound = null;
-
-function ensureSplashSound() {
-  if (splashSound) return splashSound;
-  const buffer = audioBuffers.splash; // 暫時沒有音檔可改成 audioBuffers.swim
-  if (!buffer) return null;
-
-  splashSound = new THREE.Audio(audioListener);
-  splashSound.setBuffer(buffer);
-  splashSound.setLoop(false);
-  splashSound.setVolume(0.6);
-  return splashSound;
-}
-
-function playSplash() {
-  const s = ensureSplashSound();
-  if (!s) return;
-  if (s.isPlaying) s.stop(); // 入水/出水是短音效，連續觸發時重播比等它播完合理
-  s.play();
-}
-
-// ─────────────────────────────────────────
-// 游泳水聲
-// ─────────────────────────────────────────
-const SWIM_SOUND_VOLUME = 0.5;
-const SWIM_LOOP_ENABLED = false; // ⚡ 設 false 暫時關閉連續游泳聲（swim.ogg），設 true 恢復
-let swimSound = null;
-
-function ensureSwimSound() {
-  if (swimSound) return swimSound;
-  const buffer = audioBuffers.swim;
-  if (!buffer) return null; // 音效還沒載入完成
-
-  swimSound = new THREE.Audio(audioListener);
-  swimSound.setBuffer(buffer);
-  swimSound.setLoop(false);
-  swimSound.setVolume(SWIM_SOUND_VOLUME);
-  return swimSound;
-}
-
-// 進水 / 出水：播一次（上一輪還沒播完就讓它繼續，不重播）
-function playSwimOnce() {
-  const s = ensureSwimSound();
-  if (!s) return;
-  s.setLoop(false);
-  if (!s.isPlaying) s.play();
-}
-
-// 在水裡移動：循環；停下來或離水：只關循環，當下這輪播完
-function setSwimLoop(on) {
-  if (!SWIM_LOOP_ENABLED) return;   // ⚡ 新增這行：開關關閉時直接跳過
-  const s = ensureSwimSound();
-  if (!s) return;
-  s.setLoop(on);
-  if (on && !s.isPlaying) s.play();
-}
-
-// 用 X/Z 位移判斷「有沒有在移動」（水面起伏只改 Y，不會誤判）
-let _swimLastX = 0, _swimLastZ = 0;
-const SWIM_MOVE_THRESHOLD_SQ = 1e-6; // 每幀位移平方門檻，約 1mm
 
 const loadingScreen = document.getElementById('loading-screen');
 const instructions = document.getElementById('instructions');
@@ -6059,20 +5996,15 @@ function animate(nowMs) {
 
   // ⚡ 偵測「剛入水」「剛出水」的那一瞬間，各觸發一次性的動作
   if (inPool && !wasInPool) {
+    // 剛入水：把「目前下沉量」瞬間拉到比停留深度更深，
+    // 之後下面既有的 lerp 就會自然把它拉回 WATER_SINK_DEPTH，形成「先下墜、再浮起」的感覺
     waterDepthCurrent = WATER_SINK_DEPTH + WATER_ENTRY_OVERSHOOT;
-    playSplash();     // ⚡ 入水
   } else if (!inPool && wasInPool) {
+    // 剛出水：把「目前下沉量」瞬間拉到負值（代表比一般地面高度還高），
+    // 之後下面既有的 lerp 就會自然把它拉回 0（一般行進高度），形成「先躍起、再落地」的感覺
     waterDepthCurrent = -WATER_EXIT_JUMP;
-    playSplash();     // ⚡ 出水
   }
   wasInPool = inPool;
-
-  // ⚡ 在水裡有移動 → 連續；否則只關循環
-  const dxs = camera.position.x - _swimLastX;
-  const dzs = camera.position.z - _swimLastZ;
-  _swimLastX = camera.position.x;
-  _swimLastZ = camera.position.z;
-  setSwimLoop(inPool && (dxs * dxs + dzs * dzs) > SWIM_MOVE_THRESHOLD_SQ);
 
   camera.position.y += appliedWaterOffset;   // 先抵銷上一幀套用的下沉量
 
