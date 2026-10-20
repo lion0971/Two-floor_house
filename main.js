@@ -6187,6 +6187,27 @@ if (isMobile) {
     configurable: true,
   });
 
+    // ── 點在說明面板上，也算「點擊畫面開始」 ──
+  // 面板在手機寬度下 pointer-events:auto，會攔截觸控，
+  // 所以自己處理，不依賴事件穿透到 canvas。
+  instructions.addEventListener('touchend', (e) => {
+    // ✕ 關閉鈕：交給它自己的 click 處理，不觸發開始
+    if (e.target.closest('.instructions-close-btn')) return;
+
+    // 已經開始遊戲（已鎖定）就不處理，避免面板重新展開後誤觸
+    if (isMobileLocked) return;
+
+    e.preventDefault(); // 擋掉之後補發的合成 click
+    e.stopPropagation();
+
+    hideTapPrompt();
+    hideWeatherPanel();
+    fadeOutBlackCover();
+    mobileLock();
+    instructions.classList.remove('expanded');
+    if (instructionsFab) instructionsFab.classList.add('show');
+  }, { passive: false });
+
   // ── 視角旋轉（拖曳）／長按前進／雙指長按後退 ──
   renderer.domElement.addEventListener('touchstart', (e) => {
     if (e.touches.length === 2) {
