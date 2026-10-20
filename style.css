@@ -427,7 +427,8 @@ body {
   /* ⚡ 桌機維持原本設定：滑鼠鎖定視角時完全點不到，行為不變 */
   z-index: 50;
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-  display: none; /* ⚡ 新增：CSS 預設就隱藏，不依賴 JS 執行時機。main.js 是大檔案（含 three.js 等外部套件），
+  display: none;
+  /* ⚡ 新增：CSS 預設就隱藏，不依賴 JS 執行時機。main.js 是大檔案（含 three.js 等外部套件），
   下載/解析需要時間，如果沒有這行，瀏覽器會在 JS 執行完之前，先照 CSS 預設把整個面板畫出來，
   造成下載階段面板/文字提早跑出來的畫面空窗期。要顯示時由 JS 加上 .ready class（見下方）。 */
   transform-origin: bottom left;
@@ -452,10 +453,30 @@ body {
     /* ⚡ 內距也稍微加大，避免放大後的文字太貼邊 */
   }
 
-  #instructions:not(.expanded) {
-    transform: scale(0.05);
-    opacity: 0;
-    pointer-events: none;
+  @media (max-width: 768px) {
+
+    /* 收合狀態：縮小、透明、關掉模糊，播完動畫才 hidden */
+    #instructions:not(.expanded) {
+      transform: scale(0.05);
+      opacity: 0;
+      pointer-events: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      visibility: hidden;
+      transition:
+        transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1),
+        opacity 0.5s ease,
+        visibility 0s linear 0.7s;
+    }
+
+    /* 展開狀態：立刻 visible */
+    #instructions.expanded {
+      visibility: visible;
+      transition:
+        transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1),
+        opacity 0.5s ease,
+        visibility 0s linear 0s;
+    }
   }
 
   /* ⚡ 新增：展開時直接放大文字，取代雙指縮放手勢（雙指已經用在前進/後退移動，
@@ -496,10 +517,13 @@ body {
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
   cursor: pointer;
   display: none;
-  opacity: 0; /* ⚡ 原本 1，改成預設就是隱藏狀態，不依賴 JS 執行時機，避免 main.js 還在下載/解析時，
+  opacity: 0;
+  /* ⚡ 原本 1，改成預設就是隱藏狀態，不依賴 JS 執行時機，避免 main.js 還在下載/解析時，
   瀏覽器先照 CSS 預設畫出「顯示中」的按鈕，造成下載階段 logo 提早跑出來、位置又還沒被 JS 校正的怪異畫面 */
-  transform: scale(0.6); /* ⚡ 原本 1，跟 opacity 一起預設成收合的縮小狀態 */
-  pointer-events: none; /* ⚡ 新增：預設不接收點擊，避免看得到卻點不到（或反過來）的怪異行為 */
+  transform: scale(0.6);
+  /* ⚡ 原本 1，跟 opacity 一起預設成收合的縮小狀態 */
+  pointer-events: none;
+  /* ⚡ 新增：預設不接收點擊，避免看得到卻點不到（或反過來）的怪異行為 */
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
@@ -550,9 +574,12 @@ body {
   position: absolute;
   left: 50%;
   top: 0;
-  transform: translate(-50%, calc(-100% - 3px)); /* ⚡ 原本 6px，距離太遠，減半到 3px */
-  writing-mode: vertical-rl; /* 直式（由右至左直書），符合中文直式閱讀習慣 */
-  text-orientation: upright; /* 讓每個中文字維持正立方向，而不是整個字轉90度躺著 */
+  transform: translate(-50%, calc(-100% - 3px));
+  /* ⚡ 原本 6px，距離太遠，減半到 3px */
+  writing-mode: vertical-rl;
+  /* 直式（由右至左直書），符合中文直式閱讀習慣 */
+  text-orientation: upright;
+  /* 讓每個中文字維持正立方向，而不是整個字轉90度躺著 */
   white-space: nowrap;
   pointer-events: none;
 }
@@ -573,7 +600,8 @@ body {
   font-weight: 600;
   letter-spacing: 1px;
   color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增：較深陰影，讓文字在各種背景下都看得更清楚 */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  /* ⚡ 新增：較深陰影，讓文字在各種背景下都看得更清楚 */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -591,9 +619,11 @@ body {
   font-size: 13px;
   line-height: 1.8;
   color: rgba(235, 240, 245, 0.85);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增 */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  /* ⚡ 新增 */
   display: flex;
-  align-items: flex-start; /* ⚡ 原本 center，白字換行時會把藍色標籤字垂直置中到整段高度，改成頂部對齊，永遠跟第一行白字齊平 */
+  align-items: flex-start;
+  /* ⚡ 原本 center，白字換行時會把藍色標籤字垂直置中到整段高度，改成頂部對齊，永遠跟第一行白字齊平 */
 }
 
 #instructions li strong {
@@ -601,7 +631,8 @@ body {
   font-weight: 500;
   margin-right: 6px;
   min-width: 68px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增：藍色標籤字也一併加深陰影，跟後面說明文字的可讀性一致 */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  /* ⚡ 新增：藍色標籤字也一併加深陰影，跟後面說明文字的可讀性一致 */
 }
 
 .door-label {
