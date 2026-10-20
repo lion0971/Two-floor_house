@@ -494,6 +494,15 @@ body {
     min-width: 90px;
     /* 字變大了，標籤欄寬也稍微加寬，避免文字擠在一起 */
   }
+
+  #instructions-fab {
+    display: flex;
+  }
+
+  #instructions.expanded .instructions-close-btn {
+    display: flex;
+  }
+
 }
 
 /* ⚡ 新增：常駐在左下角的收合按鈕（跟面板同一個定位點，尺寸固定 44x44），
@@ -527,12 +536,6 @@ body {
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-@media (max-width: 768px) {
-  #instructions-fab {
-    display: flex;
-  }
-}
-
 /* ⚡ 真正要顯示 fab 時，JS 加上這個 class（預設狀態已經是隱藏，見上方 opacity:0） */
 #instructions-fab.show {
   opacity: 1;
@@ -557,12 +560,6 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-}
-
-@media (max-width: 768px) {
-  #instructions.expanded .instructions-close-btn {
-    display: flex;
-  }
 }
 
 /* ==========================================
