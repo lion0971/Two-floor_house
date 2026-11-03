@@ -2002,9 +2002,10 @@ function animateLeafFlight(points, duration) {
   const RIPPLE_TRIGGER_RATIO = 0.85; // ⚡ 新增：飛行進度到這個比例(0~1)就提早播水波紋，數字越小越早出現
 
   function easeInOutCubic(t) {
-    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // 葉子落下「慢-快-慢」的節奏
   }
 
+  // 偵測葉子掉落是否卡點異常
   function frame(now) {
     const elapsed = now - start;
     const rawT = Math.min(elapsed / duration, 1);
@@ -2161,7 +2162,7 @@ Object.assign(tapPromptText.style, {
 });
 tapPrompt.appendChild(tapPromptText);
 
-document.body.appendChild(tapPrompt);
+document.body.appendChild(tapPrompt); // 把整個提示框容器，直接釘在整張網頁的最外層畫布上, 也就是上架通告
 
 // ── 點擊提示：葉片「只掉落一次」→ 落地後才開始輕微持續晃動 + 正圓水波紋 ──
 const tapPromptStyleTag = document.createElement('style');
@@ -2299,8 +2300,8 @@ function fadeOutBlackCover() {
   }, { once: true });
 }
 
-// 進度百分比
-manager.onProgress = (url, loaded, total) => {
+// 進度百分比, manager 是一個進度管理器（通常是用來管轄 3D 模型、材質、圖片等檔案載入的工具）。onProgress 是它內建的一個「事件勾子（Event Hook）」。意思是：「每當有任何一個檔案載入完成時，請自動執行我指定給你的這段程式碼。」
+manager.onProgress = (url, loaded, total) => { // 
   const percent = (loaded / total) * 100;
   const bar = document.getElementById('loader-bar');
   const percentText = document.getElementById('loader-percent');
@@ -2392,9 +2393,10 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
 
     const box = new THREE.Box3().setFromObject(obj);
     const size = new THREE.Vector3();
-    box.getSize(size);
+    box.getSize(size); // 量一下 box 的尺寸，然後把量出來的寬、高、深數值，寫入/存到 size 裡面去
 
-    const DOOR_OPEN_MARGIN = 0.1;
+    const DOOR_OPEN_MARGIN = 0.1; // 預留一點點邊距（0.1 單位），讓門不要完全開到極限
+
     // 往上/往下滑動的門固定用 Y 軸，不套用原本 X/Z 自動判斷邏輯
     const slideAxis = (isUpSlidingDoor || isDownSlidingDoor)
       ? 'y'
@@ -2431,6 +2433,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
     });
   });
 
+  // 管路
   // ── 第一遍：收集 outlet / drain 空物件（純定位用，統一同一套邏輯）──
   gltf.scene.traverse((obj) => {
     const name = obj.name.toLowerCase();
@@ -2466,15 +2469,15 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
       cachedSceneMeshes.push(mesh);
     }
 
-    //水池
+    // 水池
     if (name === 'floor_pool_water') {
       poolWaterMeshes.push(mesh);
     }
 
-    // ✅ 套用烘焙 AO 貼圖
+    // 套用烘焙 AO 貼圖
     if ((AO_BAKE_TARGETS.has(name) || AO_BAKE_TARGETS.has(parentName)) && mesh.material) {
 
-      // 1️⃣ 嚴格檢查：只認模型自帶的第三組 uv2 頂點屬性，排除 automap (uv1) 的干擾
+      // 1️⃣ 嚴格檢查：只認模型自帶的第三組 uv2 頂點屬性，排除 automap (uv1) 的干擾。geometry（幾何體 / 骨架）記錄了這個模型所有的頂點座標、面、以及貼圖對應座標。attributes（屬性資料庫）幾何體的各種頂點數據（像是頂點位置 position、法向量 normal、貼圖座標 uv）全部都會整齊地放在這個 attributes 字典
       if (mesh.geometry.attributes.uv2) {
 
         // 防止多個物件共用同一個材質球，導致大家的陰影互相覆蓋、錯位
@@ -2483,7 +2486,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
         if (aoMap) {
           // 🌟 依照你指定的 Three.js 新版對應規則：0=uv, 1=uv1, 2=uv2
           // 強制將貼圖通道綁定在第三組 UV（uv2）上
-          aoMap.channel = 2;
+          aoMap.channel = 2; // 現代 Three.js 支援多重 UV 通道（0、1、2...）
         }
 
         // 正式將烘焙好的陰影貼圖掛載上去
@@ -2575,6 +2578,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
         glowMesh.position.copy(localCenterGeo);
         mesh.add(glowMesh);
 
+        // 長出一個中空的圓柱體外殼：0.09, 0.09：頂部半徑與底部半徑，glowLen：圓柱的高度，8, 1：解析度設定（8個環形切面、1個高度切面，true：代表這是「兩端開口（Open-ended）」的圓柱，不需要上下底部的蓋子，省去不必要的面。
         const outerGlowGeo = new THREE.CylinderGeometry(0.09, 0.09, glowLen, 8, 1, true);
         if (axis.x === 1) outerGlowGeo.rotateZ(Math.PI / 2);
         else if (axis.z === 1) outerGlowGeo.rotateX(Math.PI / 2);
@@ -2584,8 +2588,8 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
           transparent: true,
           opacity: 0.03,
           side: THREE.BackSide,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending,
+          depthWrite: false, // 這個發光層不會去擋到後面其他東西的視線
+          blending: THREE.AdditiveBlending, // 疊加混色模式
         }));
         outerGlowMesh.position.copy(localCenterGeo);
         mesh.add(outerGlowMesh);
@@ -2606,19 +2610,19 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
         if (mesh.material) {
           mesh.material.emissive = new THREE.Color(0xffcc88);
           mesh.material.emissiveIntensity = emissiveIntensity;
-          if (mesh.material.map) mesh.material.color.setHex(0x888866);
+          if (mesh.material.map) mesh.material.color.setHex(0x888866); // 把這個顏色的色碼直接改成 0x888866（一個帶有工業感的暗灰綠色），但不要破壞原有的顏色物件結構
         }
 
-        mesh.geometry.computeBoundingBox();
-        const localBox = mesh.geometry.boundingBox;
+        mesh.geometry.computeBoundingBox(); // 方法，翻閱這個模型的頂點資料，算出一個能把它完全包住的虛擬箱子
+        const localBox = mesh.geometry.boundingBox; // 剛才算好的箱子資料拿出來，存到變數 localBox 裡面
         const localSize = new THREE.Vector3();
         localBox.getSize(localSize);
         const localCenterGeo = new THREE.Vector3();
         localBox.getCenter(localCenterGeo);
 
-        const baseRadius = Math.max(localSize.x, localSize.y, localSize.z) * 0.5;
+        const baseRadius = Math.max(localSize.x, localSize.y, localSize.z) * 0.5; // 將最長的那邊乘以0.5得到球體的半徑
 
-        const pt = new THREE.PointLight(0xffcc88, lightIntensity, lightDistance, 2);
+        const pt = new THREE.PointLight(0xffcc88, lightIntensity, lightDistance, 2); // 2 是模擬現實世界的「平方反比定律（Inverse-Square Law）」
         pt.position.copy(localCenterGeo);
         mesh.add(pt);
 
@@ -2629,7 +2633,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
           transparent: true,
           opacity: glowOpacity,
           blending: THREE.AdditiveBlending,
-          depthWrite: false,
+          depthWrite: false, // 『不要』把它當作實體障礙物去登記遮擋關係
         }));
 
         const glowScale = baseRadius * glowScaleFactor;
@@ -2716,7 +2720,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
       }
     }
     if (nameForCollision.includes('wall')) {
-      hintOccluders.push(mesh); // ⚡ 新增
+      hintOccluders.push(mesh);
     }
     if (STRICT_COLLISION_NAMES.has(name) || STRICT_COLLISION_NAMES.has(parentName)) {
       strictCollidableObjects.push(mesh);
@@ -2763,7 +2767,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
 
   if (poolWaterMeshes.length > 0) {
     poolBounds = new THREE.Box3();
-    poolWaterMeshes.forEach(m => poolBounds.union(new THREE.Box3().setFromObject(m)));
+    poolWaterMeshes.forEach(m => poolBounds.union(new THREE.Box3().setFromObject(m))); // setFromObject 函式自動計算出這個物件在 3D 空間中的最左、最右、最高、最低、最前、最後極限位置，然後瞬間用一個立體箱子把它們全部框起來
   }
 
   // ⚡ 自動量測 dining_table 的世界座標水平包圍盒，取代手動填寫座標，
@@ -2792,7 +2796,7 @@ loader.load(CONFIG.MODELS.BUILDING, (gltf) => {
   const collidableSpheresResult = collidableObjects.map(mesh => {
     const box = new THREE.Box3().setFromObject(mesh);
     const sphere = new THREE.Sphere();
-    box.getBoundingSphere(sphere);
+    box.getBoundingSphere(sphere); // 計算出box的包圍球數據，然後把算出來的結果，填進這個空的 sphere 容器裡
     return sphere;
   });
   const strictCollidableSpheresResult = strictCollidableObjects.map(mesh => {
@@ -2853,7 +2857,7 @@ scene.add(sunLight.target);  // target 預設原點
 
 // 太陽視覺球體
 const sunMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(1.8, 16, 16),
+  new THREE.SphereGeometry(1.8, 16, 16), // 1.8：半徑，16：經度切片數，16：緯度切片數
   new THREE.MeshBasicMaterial({ color: 0xffee88 })
 );
 scene.add(sunMesh);
@@ -3001,9 +3005,10 @@ xrayBtn.onclick = (e) => {
     const exitBtn = document.getElementById('exit-btn');
     if (exitBtn) exitBtn.classList.remove('show');
 
+    // ms：使用者點擊按鈕。50ms 到了：開始關閉選單、隱藏轉場、清理按鈕。再過 80ms 到了：確定畫面都收乾淨了，瀏覽器也放掉焦點了，立刻把滑鼠抓回 3D 畫面
     setTimeout(() => {
       unlockFromButton = false;
-      controls.lock();
+      controls.lock(); // 這行被額外延遲
     }, 80);
   }, 50);
 };
@@ -3055,14 +3060,14 @@ function toggleXRayMode(enable) {
     const ambLight = scene.children.find(o => o.isAmbientLight);
     if (ambLight) ambLight.intensity = XRAY_AMBIENT_INTENSITY;
 
-    sliderWrap.style.opacity = '0';
-    sliderWrap.style.pointerEvents = 'none';
-    setClimatePanelInstantVisible(false); // ⚡ 新增：進入透視模式時，比照滑桿隱藏溫濕度視窗
+    sliderWrap.style.opacity = '0'; // 透視模式下滑桿隱藏
+    sliderWrap.style.pointerEvents = 'none'; // 透明的滑桿容器會徹底「化為空氣」，滑鼠點擊可以完全穿透過去，直接操作下方的 3D 畫布
+    setClimatePanelInstantVisible(false); // ⚡ 溫濕度視窗：進入透視模式時，比照滑桿隱藏
   } else {
     if (daySliderValueBeforeXRay !== null) {
       daySlider.value = daySliderValueBeforeXRay;
       applyDayNight(parseFloat(daySliderValueBeforeXRay));   // 這裡會重新算出正確的曝光/環境光，不用額外還原
-      daySliderValueBeforeXRay = null;
+      daySliderValueBeforeXRay = null; // 正常模式還原順利完成了把備忘錄清空
     }
   }
 
@@ -3093,7 +3098,6 @@ function toggleXRayMode(enable) {
   // }
 
   // ── 燈泡：用 bulbMeshes 快取 ──
-  // ── 燈泡：用 bulbMeshes 快取 ──
   bulbMeshes.forEach(({ mesh }) => {
     if (mesh.material) {
       if (enable) {
@@ -3122,7 +3126,7 @@ function toggleXRayMode(enable) {
   }
 
   // ── 一般物件：用 cachedSceneMeshes 快取 ──
-  const processedMaterials = new Set();
+  const processedMaterials = new Set(); // Set集合，自動去除重覆材質
   cachedSceneMeshes.forEach((obj) => {
     const mat = obj.material;
     if (!mat || processedMaterials.has(mat)) return;
@@ -3207,11 +3211,11 @@ warningCloseBtn.onclick = () => {
     activeTimers[deviceName].repeatMode = true;
   }
 
-  // ⚡ 新增：使用者已經在本機確認過這次警告，順手把 Firebase 上對應的
-  // 節點清掉，不要留著等下一次連線斷線才靠 onDisconnect 被動清除。
+  // ⚡ 新增：使用者已經在本機確認過這次警告，順手把 Firebase 上對應的節點清掉，不要留著等下一次連線斷線才靠 onDisconnect 被動清除。
   const ackToken = currentWarningToken[deviceName];
   if (ackToken) {
     stopPollingRemoteClose(deviceName);
+    // 把這個路徑底下的資料直接刪除
     remove(ref(db, `sessions/${ackToken}/${deviceName}`)).catch(err => {
       console.warn('[Firebase] 刪除超時警告節點失敗', err);
     });
@@ -3263,7 +3267,7 @@ function closeDeviceWater(deviceName) {
   cfg.drainPipes.forEach(pipeName => {
     const p = flowingPipes.get(pipeName);
     if (!p) return;
-    const stillUsed = Object.entries(PIPE_CONFIG).some(([dName, dCfg]) => {
+    const stillUsed = Object.entries(PIPE_CONFIG).some(([dName, dCfg]) => {   // .some() 方法（只要裡面有一個條件成立，就會回傳 true，代表「還有在用」）
       if (dName === deviceName) return false;
       if (!dCfg.drainPipes.includes(pipeName)) return false;
       const endPipe = flowingPipes.get(dCfg.coldPipes[dCfg.coldPipes.length - 1]);
@@ -3283,7 +3287,7 @@ function closeDeviceWater(deviceName) {
   if (sound && sound.isPlaying) sound.stop();
 
   if (activeTimers[deviceName]) {
-    activeTimers[deviceName].startTime = null;
+    activeTimers[deviceName].startTime = null; // 把開始計時的時間點清空
     activeTimers[deviceName].alerted = false;
     activeTimers[deviceName].repeatMode = false; // 關水後重置，下次重新開水從第一次的60秒門檻開始算
   }
@@ -3317,9 +3321,7 @@ warningModal.appendChild(warningOffBtn);
 // ─────────────────────────────────────────
 // ⚡ 展開動畫時間：只做「縮放展開＋淡入」，不做跳起/拉伸效果。
 const FILTER_CARD_SHOW_MS = 320;
-// ⚡ 卡片相對於水龍頭出水口的垂直偏移量（3D世界座標，單位：公尺）。
-// 數字越大，卡片浮得越高；如果實際看起來卡片沒有剛好在裝置正上方，
-// 調這個數字即可，不用動其他邏輯。
+// ⚡ 卡片相對於水龍頭出水口的垂直偏移量（3D世界座標，單位：公尺）。數字越大，卡片浮得越高；如果實際看起來卡片沒有剛好在裝置正上方，調這個數字即可，不用動其他邏輯。
 const FILTER_CARD_HEIGHT_OFFSET = 0.2;
 // ⚡ 兩張卡片視覺上重疊時，避讓後至少要保留的間距（螢幕像素）
 const FILTER_CARD_GAP = 14;
@@ -3342,10 +3344,10 @@ const FILTER_RING_ZONES = [
 
 // ⚡ 新增：把顏色跟白色混合，ratio 0 = 完全原色，1 = 完全變白，可以自由調整「多亮」
 function mixWithWhite(hex, ratio) {
-  const r = parseInt(hex.slice(1, 3), 16);
+  const r = parseInt(hex.slice(1, 3), 16); // parseInt(..., 16)把這兩個十六進位字元轉成我們熟悉的十進位數字（0 到 255 之間）
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  const mix = (c) => Math.round(c + (255 - c) * ratio);
+  const mix = (c) => Math.round(c + (255 - c) * ratio); // 混白色後的全新亮度
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
@@ -3432,8 +3434,8 @@ function createFilterCard(device) {
   svg.setAttribute('viewBox', '0 0 92 92');
   svg.style.overflow = 'visible'; // ⚡ 保險：明確允許光暈超出viewBox範圍也不被裁切
 
-  // 底環：極暗的輪廓，讓整個圓形看得出來
-  const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  // 1.底座：極暗的輪廓，讓整個圓形看得出來, 淡淡的白色底座（固定不動）
+  const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); // 官方戶籍地址（Namespace 網址）」。這個網址不是用來連上網看網頁，只是一個全世界統一的「身分識別代號」，告訴瀏覽器：「這個元素是正式的 SVG 規格喔！」
   bg.setAttribute('cx', '46'); bg.setAttribute('cy', '46'); bg.setAttribute('r', String(RING_RADIUS));
   bg.setAttribute('fill', 'none');
   bg.setAttribute('stroke', 'rgba(255,255,255,0.15)');
@@ -3444,9 +3446,11 @@ function createFilterCard(device) {
   // trackCircle，顏色由 updateFilterUI() 依「目前所在區段」即時設定，
   // 永遠只呈現一種顏色（跟前景的進度弧同色系，只是較暗），
   // 讓整個圓環在同一時間只透露一個顏色訊號，跨過閾值才整個換色。
+
+  // 2.呈現與當前設備狀態相符的主題色（但比較暗）
   const trackCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   trackCircle.setAttribute('cx', '46'); trackCircle.setAttribute('cy', '46'); trackCircle.setAttribute('r', String(RING_RADIUS));
-  trackCircle.setAttribute('fill', 'none');
+  trackCircle.setAttribute('fill', 'none'); // 把圓形內部填滿顏色設為「無」（也就是挖空），只留下外框，變成一個圓環
   trackCircle.setAttribute('stroke-width', '6');
   trackCircle.setAttribute('stroke-dasharray', `${RING_CIRC} 0`); // 固定整圈，不隨用量變化
   trackCircle.setAttribute('stroke', FILTER_RING_ZONES[0].dim); // 初始值，之後每次 updateFilterUI() 都會覆蓋
@@ -3456,6 +3460,8 @@ function createFilterCard(device) {
   // 粗細(stroke-width)、模糊(blur)都寫死固定值，動畫只透過 CSS class
   // 「filter-ring-glow」去動 opacity/transform，不會逐幀重繪這條線本身，
   // 效能成本最低。dasharray 長度會在 updateFilterUI() 裡跟進度弧同步。
+
+  // 3.疊上永遠滿圈加了模糊（blur）和呼吸動畫的發光霓虹光暈
   const haloCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   haloCircle.setAttribute('cx', '46'); haloCircle.setAttribute('cy', '46'); haloCircle.setAttribute('r', String(RING_RADIUS));
   haloCircle.setAttribute('fill', 'none');
@@ -3469,6 +3475,7 @@ function createFilterCard(device) {
   haloCircle.classList.add('filter-ring-glow'); // 掛上呼吸動畫（只動 opacity/transform）
   svg.appendChild(haloCircle);
 
+  // 5.隨著數據伸縮、帶有圓角的動態進度環
   // ⚡ 新增：進度弧，疊在 halo 之上，維持清晰銳利的邊緣。長度 = 已用百分比，
   // updateFilterUI() 會即時更新它的 dasharray 跟顏色。
   const progressCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -4063,7 +4070,7 @@ function createDoorIndicator(name) {
 
   const trianglePoints = '0,0 34,13 0,26';
 
-  const defs = document.createElementNS(svgNS, 'defs');
+  const defs = document.createElementNS(svgNS, 'defs'); // defs 是 Definitions（定義） 的縮寫，意思是：「一個專門用來存放『幕後道具』的隱形倉庫」
 
   // ⚡ gradientUnits="userSpaceOnUse"：讓漸層用固定的座標系（跟 viewBox
   // 一致），而不是跟著三角形的包圍盒縮放，這樣才能用 gradientTransform
@@ -4290,7 +4297,7 @@ DOOR_HINT_DEVICES.forEach(createDoorHint);
 function attachDoorHintsToScene() {
   DOOR_HINT_DEVICES.forEach(({ name }) => {
     const hint = doorHintInstances[name];
-    if (!hint || hint.cssObject) return; // 已經掛過了
+    if (!hint || hint.cssObject) return; // 如果找不到這個資料夾，或者 cssObject 已經有東西了（代表這扇門的提示框已經被釘在 3D 場景上過了），就直接跳過避免重複安裝
 
     const anim = doorAnimations[name];
     if (!anim || !anim.mesh) {
@@ -4680,10 +4687,11 @@ function showClimateHintBoxes() {
 
   climatePanel.classList.add('is-visible'); // ⚡ 改成加 class
 
+  // setTimeout 會回傳一個 ID，要取消它必須拿到這個 ID。所以用外層的 let climateHideTimer = null; 保存，下次呼叫才拿得到上一次的 ID 去 clearTimeout。如果寫成區域變數，每次呼叫都是新的變數，就取消不到舊的了
   clearTimeout(climateHideTimer);
   climateHideTimer = setTimeout(() => {
     climatePanel.classList.remove('is-visible');
-  }, 3500); // 溫溼度視窗秒數
+  }, 3500);
 }
 
 // ⚡ 新增：立即切換溫濕度視窗顯示狀態（跳過滑入/滑出動畫），
@@ -4716,7 +4724,7 @@ function tryStartClimateMonitorOnDoorOpen(doorName) {
   if (climateMonitorStarted) return; // 已經啟動過了，開門不會再做任何事
 
   const partners = DOOR_PARTNER_MAP[doorName] || [];
-  const affectedNames = [doorName, ...partners];
+  const affectedNames = [doorName, ...partners]; // ... 在 JavaScript 裡叫做 展開運算子 Spread Operator
   const isTriggerDoor = affectedNames.some(name => CLIMATE_HINT_DOORS.has(name));
   if (!isTriggerDoor) return;
 
@@ -4762,7 +4770,7 @@ function updateDoorIndicators(delta) {
       return;
     }
 
-    inst.cssObject.getWorldPosition(_doorIndicatorAnchor);
+    inst.cssObject.getWorldPosition(_doorIndicatorAnchor); // inst：instance（實例)，程式幫每一扇門建立的一個「專屬管理箱子（資料物件）」。把人類寫的 HTML 網頁標籤（<div>、按鈕、氣候面板）釘在 3D 空間的某個位置上
     _doorIndicatorP0.copy(_doorIndicatorAnchor).project(camera);
 
     const dist = camera.position.distanceTo(_doorIndicatorAnchor);
@@ -4805,10 +4813,10 @@ function updateDoorIndicators(delta) {
     const dx = sx1 - sx0;
     const dy = sy1 - sy0;
     const angleDeg = (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6)
-      ? Math.atan2(dy, dx) * 180 / Math.PI
+      ? Math.atan2(dy, dx) * 180 / Math.PI // Math.atan2(dy, dx)：程式語言內建的數學函式（反正切函數），輸入垂直距離（dy）和水平距離（dx）算出「弳度（Radians）」的角度數值, 電腦算出來的弳度人類很難看懂（例如 3.14 弧度），我們把它乘以 180 再除以圓周率（Math.PI），把單位轉換成我們熟悉的「角度（Degrees，像是 90度、180度）」
       : 0;
 
-    inst.group.style.transform = `rotate(${angleDeg.toFixed(1)}deg)`;
+    inst.group.style.transform = `rotate(${angleDeg.toFixed(1)}deg)`; // toFixed(1)}四捨五入、取到小數點後第一位
 
     inst.elapsed += delta;
     if (inst.elapsed >= DOOR_INDICATOR_INTERVAL) {
@@ -5225,7 +5233,7 @@ async function markTimeoutAlert(deviceName, token) {
     // ⚡ 新增：跟寫入資料同一時機，順便告訴 Firebase 伺服器——
     // 如果這條連線之後斷線了（不管是關分頁、斷網、當機），
     // 伺服器自己幫我把這個節點刪掉，不需要瀏覽器還活著才能完成清除。
-    onDisconnect(nodeRef).remove();
+    onDisconnect(nodeRef).remove(); // 瀏覽器突然關閉沒機會執行「清除警告」的程式碼，Firebase 伺服器就會自動出手，把那筆資料擦掉
   } catch (err) {
     console.warn('[Firebase] 寫入超時警告失敗', err);
   }
@@ -5300,7 +5308,7 @@ function displayNextWarning() {
 
 // 每個按鈕處理完自己的裝置後，都要呼叫：
 function dismissCurrentWarning(deviceName) {
-  const idx = warningQueue.indexOf(deviceName);
+  const idx = warningQueue.indexOf(deviceName); // 去排隊名單裡尋找這個裝置（例如 motor_01）排在第幾個位置（索引值 Index
   if (idx !== -1) warningQueue.splice(idx, 1);
   displayNextWarning(); // 換下一個
 }
@@ -5562,8 +5570,8 @@ function applyDayNight(t) {
   const ambLight = scene.children.find(o => o.isAmbientLight);
   if (ambLight) ambLight.intensity = 0.005 + elevRatio * 0.5;
 
-  // ── 6. 天空色：暗橙（地平線）→ 淺藍（高空），用仰角進度 ─────────
-  if (scene.background instanceof THREE.Color) {
+  // ── 6. 天空色：暗橙（地平線）→ 淺藍（高空），用仰角進度 ───────── scene.background.lerpColors(startColor, endColor, ratio)
+  if (scene.background instanceof THREE.Color) { // lerpColors() 這個功能，只有「純顏色」物件才擁有
     scene.background.lerpColors(
       new THREE.Color(0x0d0503),   // 近黑暗橙
       new THREE.Color(0x87ceeb),   // 晴天藍

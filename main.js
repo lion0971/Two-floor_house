@@ -1815,7 +1815,6 @@ const instructionsCloseBtn = document.querySelector('.instructions-close-btn');
 // ─────────────────────────────────────────
 const WEATHER_LAT = 25.0439;  // 國立臺北科技大學
 const WEATHER_LON = 121.5358;
-const WEATHER_UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
 function describeWeatherCode(code) {
   if (code === 0) return '☀️ 晴天';
@@ -1886,6 +1885,13 @@ window.addEventListener('resize', () => {
   if (weatherPanel.style.opacity === '1') positionWeatherPanel();
 });
 
+// ── 天氣資料狀態（統一放在這裡，避免變數尚未宣告就被呼叫）──
+let currentOutdoorTemp = null;
+let currentOutdoorHumidity = null;
+const WEATHER_CACHE_MS = 60 * 60 * 1000; // 統一更新間隔：1 小時
+let lastWeatherFetchTime = 0;
+let weatherPromise = null; // 進行中的請求，避免重複發送
+
 async function fetchWeather() {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,relative_humidity_2m,weather_code`;
@@ -1900,17 +1906,29 @@ async function fetchWeather() {
     temperatureBox.textContent = `🌡️ ${Math.round(current.temperature_2m)}°C`;
     humidityBox.textContent = `💧 ${Math.round(current.relative_humidity_2m)}%`;
 
-    // 同步給開門氣候提示邏輯使用
+    // 同步給開門提示與儀表板使用
     currentOutdoorTemp = current.temperature_2m;
     currentOutdoorHumidity = current.relative_humidity_2m;
+    lastWeatherFetchTime = Date.now(); // 成功才記錄，失敗時下次會自動重試
   } catch (err) {
     console.warn('[Weather] 取得氣象資料失敗', err);
     weatherBox.textContent = '氣象資料暫時無法取得';
   }
 }
+
+// ── 天氣資料唯一入口：1 小時內沿用快取，過期或從沒抓過才上網 ──
+function ensureWeatherData() {
+  const isFresh = currentOutdoorTemp !== null &&
+    Date.now() - lastWeatherFetchTime < WEATHER_CACHE_MS;
+  if (isFresh) return Promise.resolve();      // 快取有效，不發請求
+  if (weatherPromise) return weatherPromise;  // 已有請求在跑，共用它
+
+  weatherPromise = fetchWeather().finally(() => { weatherPromise = null; });
+  return weatherPromise;
+}
+
 if (SHOW_WEATHER_PANEL_ON_LOAD) {
-  fetchWeather();
-  setInterval(fetchWeather, WEATHER_UPDATE_INTERVAL_MS);
+  ensureWeatherData();
 }
 
 instructions.classList.add('expanded'); // ⚡ 預設為展開狀態（下載完成後跟原本一樣完整顯示）
@@ -2312,6 +2330,7 @@ function fadeOutBlackCover() {
   blackCoverFaded = true;
   sceneRenderEnabled = true;
   blackCover.style.opacity = '0';
+  ensureWeatherData(); // ← 新增：進場預抓一次，之後走 1 小時快取
   blackCover.addEventListener('transitionend', () => {
     blackCover.remove();
     if (SHOW_WEATHER_PANEL_ON_LOAD) showWeatherPanel(); // ⚡ 依開關決定要不要顯示天氣面板
@@ -3036,6 +3055,8 @@ function openMenu() {
   // ⚡ 神之手面板開啟時，一併顯示「離開遊戲」按鈕
   const exitBtn = document.getElementById('exit-btn');
   if (exitBtn) exitBtn.classList.add('show');
+
+  setDashboardAvailable(true); // ← 新增
 }
 
 function closeMenu() {
@@ -3049,6 +3070,7 @@ function closeMenu() {
   // ⚡ 面板關閉時，一併隱藏「離開遊戲」按鈕
   const exitBtn = document.getElementById('exit-btn');
   if (exitBtn) exitBtn.classList.remove('show');
+  setDashboardAvailable(false); // ← 新增
 }
 
 // ── 補回這個函式 ──
@@ -4393,9 +4415,6 @@ function updateDoorHintsVisibility() {
   });
 }
 
-let currentOutdoorTemp = null;
-let currentOutdoorHumidity = null;
-
 // ⚡ 不再網頁一載入就自動抓，也不用 setInterval 常駐運作。
 // 改成完全由「玩家第一次開門」這個動作，去啟動一整套「抓資料→顯示→
 // 每小時重複」的循環，門本身只負責按下這個啟動鈕，之後就跟門無關了。
@@ -4719,29 +4738,28 @@ function setClimatePanelInstantVisible(visible) {
 }
 
 const CLIMATE_HINT_DOORS = new Set(DOOR_HINT_DEVICES.map(d => d.name));
-const CLIMATE_MONITOR_INTERVAL_MS = 60 * 60 * 1000; // 每隔1小時偵測一次
-let climateMonitorStarted = false; // 這套「每小時偵測」的循環是否已經啟動過
+let climateAutoStarted = false; // 第一次開門後才啟動自動彈出
 
-// ⚡ 真正的監控循環：抓最新氣象資料 → 顯示面板。
-// 啟動之後會自己每隔1小時重複執行，不再需要任何人（門）去觸發它。
-async function runClimateMonitorCycle() {
-  await fetchWeather(); // 先抓最新資料，確保這次顯示的是即時數值
+// 抓最新資料（1 小時快取）→ 彈出溫濕度視窗
+async function runClimatePopup() {
+  // 選單開著時不打擾：這次彈窗直接跳過
+  if (menuPanel.style.display === 'flex') return;
+
+  await ensureWeatherData();
   showClimateHintBoxes();
 }
 
-// ⚡ 開門只負責「啟動」這個循環，而且整趟遊戲只會啟動一次；
-// 啟動之後，門再開幾次都跟這套循環無關了。
-function tryStartClimateMonitorOnDoorOpen(doorName) {
-  if (climateMonitorStarted) return; // 已經啟動過了，開門不會再做任何事
+// 只有「第一次」開門會觸發：立刻彈一次，並啟動每小時自動彈出
+function startClimateOnFirstDoorOpen(doorName) {
+  if (climateAutoStarted) return; // 之後再開門都不處理
 
   const partners = DOOR_PARTNER_MAP[doorName] || [];
-  const affectedNames = [doorName, ...partners];
-  const isTriggerDoor = affectedNames.some(name => CLIMATE_HINT_DOORS.has(name));
+  const isTriggerDoor = [doorName, ...partners].some(n => CLIMATE_HINT_DOORS.has(n));
   if (!isTriggerDoor) return;
 
-  climateMonitorStarted = true;
-  runClimateMonitorCycle(); // 立刻執行第一次
-  setInterval(runClimateMonitorCycle, CLIMATE_MONITOR_INTERVAL_MS); // 之後每小時自動重複
+  climateAutoStarted = true;
+  runClimatePopup(); // 第一次開門：立刻彈
+  setInterval(runClimatePopup, WEATHER_CACHE_MS); // 之後每個更新週期自動彈
 }
 
 // ── 重複使用的暫存物件，避免每幀 new ──
@@ -5637,6 +5655,248 @@ daySlider.addEventListener('input', () => {
 });
 daySlider.addEventListener('mousedown', e => e.stopPropagation());
 daySlider.addEventListener('click', e => e.stopPropagation());
+
+// ─────────────────────────────────────────
+// 左側滑出式智慧儀表板（溫度/濕度/冷氣/除濕/濾心圓環）
+// 電腦：滑鼠靠近圖示滑出、移開收回｜手機：按圖示切換
+// ─────────────────────────────────────────
+const dashStyleTag = document.createElement('style');
+dashStyleTag.textContent = `
+.dash-dock {
+  position: fixed; left: 0; top: 50%;
+  z-index: 260;
+  display: flex; align-items: center;
+  /* 收起時只露出右側 52px 的圖示鈕 */
+  transform: translate(calc(-100% + 52px), -50%);
+  transition: transform 0.55s cubic-bezier(.22,.8,.24,1), opacity 0.3s ease;
+  opacity: 0; pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.dash-dock.available { opacity: 1; pointer-events: auto; }
+.dash-dock.open { transform: translate(0, -50%); }
+
+.dash-panel {
+  width: min(86vw, 380px);
+  max-height: 84vh; overflow-y: auto;
+  box-sizing: border-box; padding: 18px;
+  background: rgba(20, 26, 40, 0.55);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.16); border-left: none;
+  border-radius: 0 24px 24px 0;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  color: #f0f4f8; text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+.dash-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dash-card {
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px; padding: 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.dash-card-label { font-size: 12px; opacity: 0.8; }
+.dash-card-value { font-size: 24px; font-weight: 700; }
+.dash-sub { font-size: 12px; opacity: 0.75; }
+.dash-section-title { margin: 14px 0 8px; font-size: 13px; font-weight: 600; opacity: 0.9; }
+
+.dash-status { flex-direction: row; align-items: center; justify-content: space-between; }
+.dash-status .state { font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.12); color: rgba(240,244,248,0.7); }
+.dash-status.on.ac   .state { background: rgba(79,220,255,0.2); color: #7fe0ff; box-shadow: 0 0 8px rgba(79,220,255,0.5); }
+.dash-status.on.dehu .state { background: rgba(90,220,170,0.2); color: #7fe8c0; box-shadow: 0 0 8px rgba(90,220,170,0.5); }
+
+.dash-humi { flex-direction: row; align-items: center; gap: 10px; }
+.dash-ring-wrap { position: relative; width: 56px; height: 56px; flex-shrink: 0; }
+.dash-ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.dash-ring-center { position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.1; }
+
+.dash-filter-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dash-filter { align-items: center; text-align: center; }
+.dash-filter .name { font-size: 12px; opacity: 0.9; }
+.dash-filter .flow { font-size: 11px; color: #7fe0ff; min-height: 14px; }
+
+.dash-tab {
+  width: 52px; height: 64px; margin-left: -1px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 26, 40, 0.6);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.16); border-left: none;
+  border-radius: 0 18px 18px 0;
+  color: #4fdcff; cursor: pointer; padding: 0;
+  box-shadow: 4px 4px 20px rgba(0,0,0,0.3);
+}
+.dash-tab svg { width: 26px; height: 26px; filter: drop-shadow(0 0 4px rgba(79,220,255,0.7)); transition: transform 0.4s ease; }
+.dash-dock.open .dash-tab svg { transform: rotate(180deg); }
+`;
+document.head.appendChild(dashStyleTag);
+
+const DASH_RING_R = 22;
+const DASH_RING_C = 2 * Math.PI * DASH_RING_R;
+const DASH_FILTER_R = 26;
+const DASH_FILTER_C = 2 * Math.PI * DASH_FILTER_R;
+
+const dashDock = document.createElement('div');
+dashDock.className = 'dash-dock';
+dashDock.innerHTML = `
+  <div class="dash-panel">
+    <div class="dash-title">🏠 智慧儀表板</div>
+
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-card-label">🌡️ 溫度</div>
+        <div class="dash-card-value"><span id="dash-temp">--</span>°C</div>
+      </div>
+      <div class="dash-card dash-humi">
+        <div class="dash-ring-wrap">
+          <svg viewBox="0 0 56 56">
+            <circle cx="28" cy="28" r="${DASH_RING_R}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6"/>
+            <circle id="dash-humi-ring" cx="28" cy="28" r="${DASH_RING_R}" fill="none" stroke="#60a5fa"
+              stroke-width="6" stroke-linecap="round" stroke-dasharray="0 ${DASH_RING_C}"/>
+          </svg>
+          <div class="dash-ring-center">💧</div>
+        </div>
+        <div>
+          <div class="dash-card-label">濕度</div>
+          <div class="dash-card-value" style="font-size:20px"><span id="dash-humi">--</span>%</div>
+        </div>
+      </div>
+
+      <div class="dash-card dash-status ac" id="dash-ac">
+        <div><div class="dash-card-label">❄️ 冷氣</div><div class="dash-sub">&gt; 28°C 自動開啟</div></div>
+        <div class="state">--</div>
+      </div>
+      <div class="dash-card dash-status dehu" id="dash-dehu">
+        <div><div class="dash-card-label">💧 除濕</div><div class="dash-sub">&gt; 60% 自動開啟</div></div>
+        <div class="state">--</div>
+      </div>
+    </div>
+
+    <div class="dash-section-title">🚰 淨水濾心剩餘</div>
+    <div class="dash-filter-list" id="dash-filter-list"></div>
+  </div>
+
+  <button class="dash-tab" aria-label="智慧儀表板">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/>
+      <rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
+    </svg>
+  </button>
+`;
+document.body.appendChild(dashDock);
+
+// 濾心卡片（依 FILTER_DEVICES 動態產生）
+const dashFilterEls = {};
+const dashFilterList = dashDock.querySelector('#dash-filter-list');
+FILTER_DEVICES.forEach(device => {
+  const card = document.createElement('div');
+  card.className = 'dash-card dash-filter';
+  card.innerHTML = `
+    <div class="dash-ring-wrap" style="width:64px;height:64px">
+      <svg viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="${DASH_FILTER_R}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6"/>
+        <circle class="ring" cx="32" cy="32" r="${DASH_FILTER_R}" fill="none" stroke="#60a5fa"
+          stroke-width="6" stroke-linecap="round" stroke-dasharray="0 ${DASH_FILTER_C}"/>
+      </svg>
+      <div class="dash-ring-center pct" style="font-size:13px">--%</div>
+    </div>
+    <div class="name">${DEVICE_LABEL[device] ?? device}</div>
+    <div class="dash-sub time">--</div>
+    <div class="flow"></div>
+  `;
+  dashFilterList.appendChild(card);
+  dashFilterEls[device] = {
+    ring: card.querySelector('.ring'),
+    pct: card.querySelector('.pct'),
+    time: card.querySelector('.time'),
+    flow: card.querySelector('.flow'),
+  };
+});
+
+const dashTempEl = dashDock.querySelector('#dash-temp');
+const dashHumiEl = dashDock.querySelector('#dash-humi');
+const dashHumiRing = dashDock.querySelector('#dash-humi-ring');
+const dashAcEl = dashDock.querySelector('#dash-ac');
+const dashDehuEl = dashDock.querySelector('#dash-dehu');
+
+function updateDashboard() {
+  const t = currentOutdoorTemp, h = currentOutdoorHumidity;
+
+  if (t === null || h === null) {
+    dashTempEl.textContent = '--';
+    dashHumiEl.textContent = '--';
+    dashAcEl.classList.remove('on');   dashAcEl.querySelector('.state').textContent = '讀取中';
+    dashDehuEl.classList.remove('on'); dashDehuEl.querySelector('.state').textContent = '讀取中';
+  } else {
+    dashTempEl.textContent = Math.round(t);
+    dashHumiEl.textContent = Math.round(h);
+    const len = Math.min(100, Math.max(0, h)) / 100 * DASH_RING_C;
+    dashHumiRing.setAttribute('stroke-dasharray', `${len} ${DASH_RING_C - len}`);
+
+    const acOn = t > 28, dehuOn = h > 60;   // 規則與 getClimateStatusBadges 一致
+    dashAcEl.classList.toggle('on', acOn);
+    dashAcEl.querySelector('.state').textContent = acOn ? '已開啟' : '待機';
+    dashDehuEl.classList.toggle('on', dehuOn);
+    dashDehuEl.querySelector('.state').textContent = dehuOn ? '已開啟' : '待機';
+  }
+
+  // 濾心圓環：沿用 filterState 與 FILTER_RING_ZONES
+  FILTER_DEVICES.forEach(device => {
+    const st = filterState[device], el = dashFilterEls[device];
+    if (!st || !el) return;
+    const usedPercent = Math.min(100, (st.usedSeconds / FILTER_LIFETIME_SECONDS) * 100);
+    const remainPercent = 100 - usedPercent;
+    const zone = FILTER_RING_ZONES.find((z, i) =>
+      usedPercent >= z.min && (i === FILTER_RING_ZONES.length - 1 ? usedPercent <= z.max : usedPercent < z.max)
+    ) || FILTER_RING_ZONES[FILTER_RING_ZONES.length - 1];
+
+    const len = remainPercent / 100 * DASH_FILTER_C;
+    el.ring.setAttribute('stroke-dasharray', `${len} ${DASH_FILTER_C - len}`);
+    el.ring.setAttribute('stroke', zone.color);
+    el.pct.textContent = `${Math.round(remainPercent)}%`;
+
+    const p = formatRemainingParts(Math.max(0, FILTER_LIFETIME_SECONDS - st.usedSeconds));
+    el.time.textContent = `${p.h}時${p.m}分${p.s}秒`;
+    el.flow.textContent = st.isActive ? '💦 出水中' : '';
+  });
+}
+
+// ── 開關控制 ──
+let dashOpen = false;
+let dashAvailable = false;
+let dashTimer = null;
+
+function setDashOpen(open) {
+  if (open && !dashAvailable) return;
+  if (dashOpen === open) return;
+  dashOpen = open;
+  dashDock.classList.toggle('open', open);
+  clearInterval(dashTimer);
+  dashTimer = null;
+  if (open) {
+    ensureWeatherData().then(updateDashboard); // 有快取立刻回傳，沒有才上網抓
+    updateDashboard();
+    dashTimer = setInterval(updateDashboard, 1000); // 只在展開時每秒更新，收起就停
+  }
+}
+
+// 雙擊選單開著時才出現圖示；選單關閉就整個隱藏並收回
+function setDashboardAvailable(v) {
+  dashAvailable = v;
+  dashDock.classList.toggle('available', v);
+  if (!v) setDashOpen(false);
+}
+
+// 電腦：滑鼠靠近展開、離開收回（含圖示與面板整塊範圍）
+dashDock.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') setDashOpen(true); });
+dashDock.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') setDashOpen(false); });
+// 手機：按圖示切換
+dashDock.querySelector('.dash-tab').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (isMobile || e.pointerType === 'touch') setDashOpen(!dashOpen);
+});
+dashDock.addEventListener('mousedown', e => e.stopPropagation());
+
 // ─────────────────────────────────────────
 // 八、控制與互動
 // ─────────────────────────────────────────
@@ -5647,7 +5907,8 @@ const controls = new PointerLockControls(camera, renderer.domElement);
 controls.addEventListener('lock', () => {
   sliderWrap.style.opacity = '0';
   sliderWrap.style.pointerEvents = 'none';
-  setClimatePanelInstantVisible(false); // ⚡ 新增：滑桿收起時，溫濕度視窗同步立即隱藏
+  setClimatePanelInstantVisible(false);
+  setDashboardAvailable(false); // ← 新增
 });
 
 controls.addEventListener('unlock', () => {
@@ -5655,10 +5916,11 @@ controls.addEventListener('unlock', () => {
     if (!isXRayMode) {
       sliderWrap.style.opacity = '1';
       sliderWrap.style.pointerEvents = 'auto';
-      setClimatePanelInstantVisible(true); // ⚡ 新增：滑桿收起時，溫濕度視窗同步立即隱藏
+      setClimatePanelInstantVisible(true);
     }
     if (!unlockFromButton) {
       menuPanel.style.display = 'flex';
+      setDashboardAvailable(true); // ← 新增（按 ESC 叫出選單時也要有圖示）
     }
   }
 });
@@ -5718,10 +5980,9 @@ renderer.domElement.addEventListener('click', () => {
         dismissDoorHintPermanently();
       }
 
-      // ⚡ 修改：門被「打開」時，只負責啟動每小時一次的溫濕度監控循環，
-      // 只會啟動一次，啟動後不再需要玩家開門才會顯示。
+      // 只有第一次開門會彈出溫濕度，之後由每小時計時器自動彈出
       if (newIsOpen) {
-        tryStartClimateMonitorOnDoorOpen(doorName);
+        startClimateOnFirstDoorOpen(doorName);
       }
     }
     return;
@@ -6168,7 +6429,8 @@ if (isMobile) {
     // 觸發 controls 的 lock 事件讓 UI 同步（隱藏滑桿）
     sliderWrap.style.opacity = '0';
     sliderWrap.style.pointerEvents = 'none';
-    setClimatePanelInstantVisible(false); // ⚡ 新增
+    setClimatePanelInstantVisible(false);
+    setDashboardAvailable(false); // ← 新增
   }
 
   function mobileUnlock() {
