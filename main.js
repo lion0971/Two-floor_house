@@ -5669,14 +5669,14 @@ dashStyleTag.textContent = `
   z-index: 260;
   display: flex; align-items: center;
   transform: translateX(calc(-100% + 52px));  /*滑鼠移近左邊圖示的反應速度*/
-  transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+  transition: transform 0.6s cubic-bezier(0.34, 1.2, 0.64, 1), opacity 0.3s ease;
   opacity: 0; pointer-events: none;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 .dash-dock.open {
  transform: translateX(0);
   /* 展開：起步很快，接近終點時明顯減速 */
-  transition: transform 0.4s cubic-bezier(0.34, 1.12, 0.64, 1), opacity 0.3s ease;
+  transition: transform 0.4s cubic-bezier(0.34, 1.1, 0.64, 1), opacity 0.3s ease;
 }
 .dash-dock.available { opacity: 1; pointer-events: none; }
 .dash-panel, .dash-tab { pointer-events: auto; }
@@ -5941,7 +5941,10 @@ function setDashOpen(open) {
 function setDashboardAvailable(v) {
   dashAvailable = v;
   dashDock.classList.toggle('available', v);
-  if (!v) setDashOpen(false);
+  if (!v) {
+    dashSuppressOpen = false;   // ← 新增
+    setDashOpen(false);
+  }
 }
 
 // ── 電腦：滑鼠靠近圖示就展開，離開面板範圍才收回 ──
@@ -5949,34 +5952,47 @@ const DASH_TAB_VISIBLE_W = 52;   // 收起時露出的圖示寬度
 const DASH_TRIGGER_NEAR = 160;    // 圖示外擴多少像素內就展開
 const DASH_LEAVE_MARGIN = 5;    // 展開後，離開面板外擴多少像素才收回
 let dashMouseRaf = 0;
+let dashSuppressOpen = false;   // 手動關閉後，不自動展開
 
 window.addEventListener('mousemove', (e) => {
   if (isMobile || !dashAvailable) return;
-  if (dashMouseRaf) return;                       // 每個畫面只算一次，省效能
+  if (dashMouseRaf) return;
   const mx = e.clientX, my = e.clientY;
   dashMouseRaf = requestAnimationFrame(() => {
     dashMouseRaf = 0;
-    const r = dashDock.getBoundingClientRect();   // 只有 translateX，上下是穩定的
+    const r = dashDock.getBoundingClientRect();
     const tr = dashDock.querySelector('.dash-tab').getBoundingClientRect();
     const midY = (tr.top + tr.bottom) / 2;
-    let shouldOpen;
+
+    // 感應區：圖示外擴範圍
+    const inTriggerZone = mx <= DASH_TAB_VISIBLE_W + DASH_TRIGGER_NEAR &&
+                          Math.abs(my - midY) <= 32 + DASH_TRIGGER_NEAR;
+
     if (dashOpen) {
-      // 保持範圍用 offsetWidth（不受滑動動畫影響），避免展開途中被誤判收回
-      shouldOpen = mx <= dashDock.offsetWidth + DASH_LEAVE_MARGIN &&
-        my >= r.top - DASH_LEAVE_MARGIN && my <= r.bottom + DASH_LEAVE_MARGIN;
+      // 展開中：離開面板範圍才收回
+      const stillInside = mx <= dashDock.offsetWidth + DASH_LEAVE_MARGIN &&
+                          my >= r.top - DASH_LEAVE_MARGIN && my <= r.bottom + DASH_LEAVE_MARGIN;
+      setDashOpen(stillInside);
     } else {
-      // 感應區：圖示所在位置往外擴
-      shouldOpen = mx <= DASH_TAB_VISIBLE_W + DASH_TRIGGER_NEAR &&
-        Math.abs(my - midY) <= 32 + DASH_TRIGGER_NEAR;
+      if (dashSuppressOpen) {
+        // 手動關閉後：滑鼠離開感應區才解除，之後靠近才會再展開
+        if (!inTriggerZone) dashSuppressOpen = false;
+        return;
+      }
+      setDashOpen(inTriggerZone);
     }
-    setDashOpen(shouldOpen);
   });
 });
 
 // 手機：按圖示切換
 dashDock.querySelector('.dash-tab').addEventListener('click', (e) => {
   e.stopPropagation();
-  if (isMobile || e.pointerType === 'touch') setDashOpen(!dashOpen);
+  if (dashOpen) {
+    dashSuppressOpen = true;   // 手動關閉：滑鼠離開感應範圍前，不要再被自動展開
+    setDashOpen(false);
+  } else {
+    setDashOpen(true);
+  }
 });
 dashDock.addEventListener('mousedown', e => e.stopPropagation());
 
