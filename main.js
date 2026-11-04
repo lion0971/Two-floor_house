@@ -4440,7 +4440,7 @@ climateCardStyleTag.textContent = `
   color: #f0f4f8;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   width: fit-content;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* ⚡ 新增：讓文字在各種背景下都看得更清楚 */
+  text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
   transition: transform 0.6s ease, opacity 0.6s ease;
   opacity: 0;
   transform: translate(80px, -50%);   /* 桌機版：預設隱藏狀態（貼右側外面） */
@@ -5663,71 +5663,127 @@ daySlider.addEventListener('click', e => e.stopPropagation());
 const dashStyleTag = document.createElement('style');
 dashStyleTag.textContent = `
 .dash-dock {
-  position: fixed; left: 0; top: 50%;
+  --dash-font: 13px;         /* 內文：跟 #instructions li 一樣 */
+  --dash-title-font: 15px;   /* 標題：跟 #instructions h3 一樣 */
+  position: fixed; left: 0; top: 12px; bottom: 12px;
   z-index: 260;
   display: flex; align-items: center;
-  /* 收起時只露出右側 52px 的圖示鈕 */
-  transform: translate(calc(-100% + 52px), -50%);
-  transition: transform 0.55s cubic-bezier(.22,.8,.24,1), opacity 0.3s ease;
+  transform: translateX(calc(-100% + 52px));  /*滑鼠移近左邊圖示的反應速度*/
+  transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
   opacity: 0; pointer-events: none;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
-.dash-dock.available { opacity: 1; pointer-events: auto; }
-.dash-dock.open { transform: translate(0, -50%); }
+.dash-dock.open {
+ transform: translateX(0);
+  /* 展開：起步很快，接近終點時明顯減速 */
+  transition: transform 0.4s cubic-bezier(0.34, 1.12, 0.64, 1), opacity 0.3s ease;
+}
+.dash-dock.available { opacity: 1; pointer-events: none; }
+.dash-panel, .dash-tab { pointer-events: auto; }
+.dash-dock.open { transform: translateX(0); }
 
 .dash-panel {
-  width: min(86vw, 380px);
-  max-height: 84vh; overflow-y: auto;
-  box-sizing: border-box; padding: 18px;
-  background: rgba(20, 26, 40, 0.55);
+  width: calc(min(86vw, 360px) + 40px);   /* 多 40px 的延伸量 */
+  margin-left: -40px;                      /* 往左藏到螢幕外 */
+  height: 100%;
+  display: flex; flex-direction: column;
+  box-sizing: border-box; padding: 14px 14px 14px 54px;   /* 左側 padding 加 40px，內容位置不變 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: rgba(20, 26, 40, 0.78);
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255,255,255,0.16); border-left: none;
   border-radius: 0 24px 24px 0;
   box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-  color: #f0f4f8; text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  color: #f0f4f8; text-shadow: 0 1px 3px rgba(0,0,0,0.85);
 }
-.dash-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
-.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dash-panel::-webkit-scrollbar { width: 6px; }
+.dash-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+.dash-panel::-webkit-scrollbar-track { background: transparent; }
+.dash-panel { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.3) transparent; }
+
+.dash-title { font-size: var(--dash-title-font); font-weight: 600; letter-spacing: 1px; color: #fff; margin-bottom: 10px; flex-shrink: 0; }
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex-shrink: 0; }
 .dash-card {
   background: rgba(255,255,255,0.10);
   border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 16px; padding: 12px;
-  display: flex; flex-direction: column; gap: 6px;
+  border-radius: 14px; padding: 9px 10px;
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
 }
-.dash-card-label { font-size: 12px; opacity: 0.8; }
-.dash-card-value { font-size: 24px; font-weight: 700; }
-.dash-sub { font-size: 12px; opacity: 0.75; }
-.dash-section-title { margin: 14px 0 8px; font-size: 13px; font-weight: 600; opacity: 0.9; }
+.dash-card-label { font-size: var(--dash-font); font-weight: 500; color: #ffffff; }
+.dash-card-value { font-size: 22px; font-weight: 700; }
+.dash-sub { font-size: var(--dash-font); line-height: 1.3; color: #ffffff; }
+.dash-section-title { margin: 12px 0 8px; font-size: var(--dash-title-font); font-weight: 600; opacity: 0.9; flex-shrink: 0; }
 
-.dash-status { flex-direction: row; align-items: center; justify-content: space-between; }
-.dash-status .state { font-size: 12px; padding: 3px 10px; border-radius: 999px;
-  background: rgba(255,255,255,0.12); color: rgba(240,244,248,0.7); }
-.dash-status.on.ac   .state { background: rgba(79,220,255,0.2); color: #7fe0ff; box-shadow: 0 0 8px rgba(79,220,255,0.5); }
-.dash-status.on.dehu .state { background: rgba(90,220,170,0.2); color: #7fe8c0; box-shadow: 0 0 8px rgba(90,220,170,0.5); }
+.dash-status { align-items: flex-start; gap: 6px; }
+.dash-status .state {
+  font-size: var(--dash-font); font-weight: 600;
+  padding: 3px 12px; border-radius: 999px;
+  background: rgba(255,255,255,0.22); color: #ffffff;
+  white-space: nowrap; text-shadow: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+}
+.dash-status.on.ac .state {
+  background: #0e9fc4; color: #ffffff;
+  box-shadow: 0 0 10px rgba(79,220,255,0.6);
+}
+.dash-status.on.dehu .state {
+  background: #14a37a; color: #ffffff;
+  box-shadow: 0 0 10px rgba(90,220,170,0.6);
+}
 
-.dash-humi { flex-direction: row; align-items: center; gap: 10px; }
-.dash-ring-wrap { position: relative; width: 56px; height: 56px; flex-shrink: 0; }
+.dash-humi { flex-direction: row; align-items: center; gap: 8px; }
+.dash-ring-wrap { position: relative; width: 48px; height: 48px; flex-shrink: 0; }
 .dash-ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .dash-ring-center { position: absolute; inset: 0; display: flex; align-items: center;
   justify-content: center; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.1; }
 
-.dash-filter-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.dash-filter { align-items: center; text-align: center; }
-.dash-filter .name { font-size: 12px; opacity: 0.9; }
-.dash-filter .flow { font-size: 11px; color: #7fe0ff; min-height: 14px; }
+.dash-filter-list {
+  display: grid; grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 8px; flex: 1; min-height: 300px;
+}
+.dash-filter { align-items: center; justify-content: center; text-align: center; gap: 4px; padding: 6px; }
+.dash-filter .name {
+  font-size: var(--dash-font); font-weight: 600; line-height: 1.2;
+  color: #ffffff;
+}
+.dash-filter .time {
+  font-size: var(--dash-font); font-weight: 600;
+  color: #ffffff; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.dash-filter .flow { font-size: var(--dash-font); font-weight: 600; color: #8fe9ff; min-height: 16px; }
 
 .dash-tab {
-  width: 52px; height: 64px; margin-left: -1px;
+  width: 52px; height: 64px; margin-left: -1px; flex-shrink: 0;
+  align-self: flex-start;                          /* 不再垂直置中，改從上方定位 */
+  margin-top: calc(33.333vh - 44px);               /* 圖示中心落在視窗高度 1/3（扣掉上邊距 12px + 半高 32px） */
   display: flex; align-items: center; justify-content: center;
   background: rgba(20, 26, 40, 0.6);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255,255,255,0.16); border-left: none;
-  border-radius: 0 18px 18px 0;
+  border-radius: 0 32px 32px 0;                    /* 高度 64 的一半 = 32，右側變成完整半圓 */
   color: #4fdcff; cursor: pointer; padding: 0;
   box-shadow: 4px 4px 20px rgba(0,0,0,0.3);
 }
 .dash-tab svg { width: 26px; height: 26px; filter: drop-shadow(0 0 4px rgba(79,220,255,0.7)); transition: transform 0.4s ease; }
 .dash-dock.open .dash-tab svg { transform: rotate(180deg); }
+
+/* 視窗很矮時：縮小間距，並隱藏冷氣/除濕的說明小字（濾心時間保留） */
+@media (max-height: 640px) {
+  .dash-panel { padding: 10px; }
+  .dash-title { margin-bottom: 6px; }
+  .dash-card { padding: 6px 8px; }
+  .dash-card-value { font-size: 18px; }
+  .dash-status .dash-sub { display: none; }
+  .dash-section-title { margin: 8px 0 6px; }
+}
+
+/* 手機寬度：字級比照 #instructions 放大，但取中間值避免版面爆開 */
+@media (max-width: 768px) {
+  .dash-dock { --dash-font: 16px; --dash-title-font: 18px; }
+}
 `;
 document.head.appendChild(dashStyleTag);
 
@@ -5763,11 +5819,11 @@ dashDock.innerHTML = `
       </div>
 
       <div class="dash-card dash-status ac" id="dash-ac">
-        <div><div class="dash-card-label">❄️ 冷氣</div><div class="dash-sub">&gt; 28°C 自動開啟</div></div>
+        <div><div class="dash-card-label">❄️ 冷氣</div><div class="dash-sub">&gt; 28°C 啟動</div></div>
         <div class="state">--</div>
       </div>
       <div class="dash-card dash-status dehu" id="dash-dehu">
-        <div><div class="dash-card-label">💧 除濕</div><div class="dash-sub">&gt; 60% 自動開啟</div></div>
+        <div><div class="dash-card-label">💧 除濕</div><div class="dash-sub">&gt; 60% 啟動</div></div>
         <div class="state">--</div>
       </div>
     </div>
@@ -5792,13 +5848,13 @@ FILTER_DEVICES.forEach(device => {
   const card = document.createElement('div');
   card.className = 'dash-card dash-filter';
   card.innerHTML = `
-    <div class="dash-ring-wrap" style="width:64px;height:64px">
-      <svg viewBox="0 0 64 64">
-        <circle cx="32" cy="32" r="${DASH_FILTER_R}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6"/>
-        <circle class="ring" cx="32" cy="32" r="${DASH_FILTER_R}" fill="none" stroke="#60a5fa"
-          stroke-width="6" stroke-linecap="round" stroke-dasharray="0 ${DASH_FILTER_C}"/>
+    <div class="dash-ring-wrap" style="width:56px;height:56px">
+      <svg viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r="${DASH_FILTER_R}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="5"/>
+        <circle class="ring" cx="28" cy="28" r="${DASH_FILTER_R}" fill="none" stroke="#60a5fa"
+          stroke-width="5" stroke-linecap="round" stroke-dasharray="0 ${DASH_FILTER_C}"/>
       </svg>
-      <div class="dash-ring-center pct" style="font-size:13px">--%</div>
+      <div class="dash-ring-center pct" style="font-size:12px">--%</div>
     </div>
     <div class="name">${DEVICE_LABEL[device] ?? device}</div>
     <div class="dash-sub time">--</div>
@@ -5825,7 +5881,7 @@ function updateDashboard() {
   if (t === null || h === null) {
     dashTempEl.textContent = '--';
     dashHumiEl.textContent = '--';
-    dashAcEl.classList.remove('on');   dashAcEl.querySelector('.state').textContent = '讀取中';
+    dashAcEl.classList.remove('on'); dashAcEl.querySelector('.state').textContent = '讀取中';
     dashDehuEl.classList.remove('on'); dashDehuEl.querySelector('.state').textContent = '讀取中';
   } else {
     dashTempEl.textContent = Math.round(t);
@@ -5857,6 +5913,7 @@ function updateDashboard() {
 
     const p = formatRemainingParts(Math.max(0, FILTER_LIFETIME_SECONDS - st.usedSeconds));
     el.time.textContent = `${p.h}時${p.m}分${p.s}秒`;
+
     el.flow.textContent = st.isActive ? '💦 出水中' : '';
   });
 }
@@ -5887,9 +5944,35 @@ function setDashboardAvailable(v) {
   if (!v) setDashOpen(false);
 }
 
-// 電腦：滑鼠靠近展開、離開收回（含圖示與面板整塊範圍）
-dashDock.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') setDashOpen(true); });
-dashDock.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') setDashOpen(false); });
+// ── 電腦：滑鼠靠近圖示就展開，離開面板範圍才收回 ──
+const DASH_TAB_VISIBLE_W = 52;   // 收起時露出的圖示寬度
+const DASH_TRIGGER_NEAR = 160;    // 圖示外擴多少像素內就展開
+const DASH_LEAVE_MARGIN = 5;    // 展開後，離開面板外擴多少像素才收回
+let dashMouseRaf = 0;
+
+window.addEventListener('mousemove', (e) => {
+  if (isMobile || !dashAvailable) return;
+  if (dashMouseRaf) return;                       // 每個畫面只算一次，省效能
+  const mx = e.clientX, my = e.clientY;
+  dashMouseRaf = requestAnimationFrame(() => {
+    dashMouseRaf = 0;
+    const r = dashDock.getBoundingClientRect();   // 只有 translateX，上下是穩定的
+    const tr = dashDock.querySelector('.dash-tab').getBoundingClientRect();
+const midY = (tr.top + tr.bottom) / 2;
+    let shouldOpen;
+    if (dashOpen) {
+      // 保持範圍用 offsetWidth（不受滑動動畫影響），避免展開途中被誤判收回
+      shouldOpen = mx <= dashDock.offsetWidth + DASH_LEAVE_MARGIN &&
+        my >= r.top - DASH_LEAVE_MARGIN && my <= r.bottom + DASH_LEAVE_MARGIN;
+    } else {
+      // 感應區：圖示所在位置往外擴
+      shouldOpen = mx <= DASH_TAB_VISIBLE_W + DASH_TRIGGER_NEAR &&
+        Math.abs(my - midY) <= 32 + DASH_TRIGGER_NEAR;
+    }
+    setDashOpen(shouldOpen);
+  });
+});
+
 // 手機：按圖示切換
 dashDock.querySelector('.dash-tab').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -6449,7 +6532,7 @@ if (isMobile) {
     configurable: true,
   });
 
-    // ── 點在說明面板上，也算「點擊畫面開始」 ──
+  // ── 點在說明面板上，也算「點擊畫面開始」 ──
   // 面板在手機寬度下 pointer-events:auto，會攔截觸控，
   // 所以自己處理，不依賴事件穿透到 canvas。
   instructions.addEventListener('touchend', (e) => {
