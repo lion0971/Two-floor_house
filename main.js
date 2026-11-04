@@ -5958,7 +5958,7 @@ window.addEventListener('mousemove', (e) => {
     dashMouseRaf = 0;
     const r = dashDock.getBoundingClientRect();   // 只有 translateX，上下是穩定的
     const tr = dashDock.querySelector('.dash-tab').getBoundingClientRect();
-const midY = (tr.top + tr.bottom) / 2;
+    const midY = (tr.top + tr.bottom) / 2;
     let shouldOpen;
     if (dashOpen) {
       // 保持範圍用 offsetWidth（不受滑動動畫影響），避免展開途中被誤判收回
@@ -6626,6 +6626,17 @@ if (isMobile) {
     if (diff < DOUBLE_TAP_MS && diff > 0) {
       clearTimeout(tapTimer);
       lastTapTime = 0;
+
+      // 還在「點擊畫面開始」階段就直接雙擊叫出選單：
+      // 要先把開始畫面收掉，跟單擊開始、電腦版行為一致
+      if (tapPrompt.style.display !== 'none') {
+        hideTapPrompt();
+        hideWeatherPanel();
+        fadeOutBlackCover();
+        instructions.classList.remove('expanded');
+        if (instructionsFab) instructionsFab.classList.add('show');
+      }
+
       mobileUnlock();
       openMenu();
     } else {
