@@ -5678,24 +5678,33 @@ dashStyleTag.textContent = `
   /* 展開：起步很快，接近終點時明顯減速 */
   transition: transform 0.4s cubic-bezier(0.34, 1.1, 0.64, 1), opacity 0.3s ease;
 }
+/* 面板左側的隱形延伸：展開衝過頭時用來補縫，避免露出後面的畫面 */
+.dash-dock::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -60px; width: 60px;
+  background: rgba(14, 18, 30, 0.78);   /* 要跟 .dash-panel 的 background 一致 */
+  pointer-events: none;
+}
 .dash-dock.available { opacity: 1; pointer-events: none; }
 .dash-panel, .dash-tab { pointer-events: auto; }
 .dash-dock.open { transform: translateX(0); }
 
 .dash-panel {
-  width: calc(min(86vw, 360px) + 40px);   /* 多 40px 的延伸量 */
-  margin-left: -40px;                      /* 往左藏到螢幕外 */
+  width: min(86vw, 360px);          /* 拿掉 + 40px */
+  /* margin-left: -40px; 整行刪除 */
   height: 100%;
   display: flex; flex-direction: column;
-  box-sizing: border-box; padding: 14px 14px 14px 54px;   /* 左側 padding 加 40px，內容位置不變 */
+  box-sizing: border-box; padding: 14px;   /* 改回 14px */
   overflow-x: hidden;
   overflow-y: auto;
-  background: rgba(20, 26, 40, 0.78);
+  background: rgba(14, 18, 30, 0.78);
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255,255,255,0.16); border-left: none;
   border-radius: 0 24px 24px 0;
   box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-  color: #f0f4f8; text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+  color: #f0f4f8; text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6);
 }
 .dash-panel::-webkit-scrollbar { width: 6px; }
 .dash-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
