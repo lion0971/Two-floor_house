@@ -5927,13 +5927,17 @@ function setDashOpen(open) {
   if (open && !dashAvailable) return;
   if (dashOpen === open) return;
   dashOpen = open;
-  dashDock.classList.toggle('open', open);
+  dashDock.classList.toggle('open', open);   // 先觸發滑出動畫
   clearInterval(dashTimer);
   dashTimer = null;
   if (open) {
-    ensureWeatherData().then(updateDashboard); // 有快取立刻回傳，沒有才上網抓
-    updateDashboard();
-    dashTimer = setInterval(updateDashboard, 1000); // 只在展開時每秒更新，收起就停
+    // 等動畫起跑後再更新資料，避免擋住第一個畫面
+    requestAnimationFrame(() => {
+      if (!dashOpen) return;                  // 這一瞬間已被收回就不用做
+      ensureWeatherData().then(updateDashboard);
+      updateDashboard();
+      dashTimer = setInterval(updateDashboard, 1000);
+    });
   }
 }
 
